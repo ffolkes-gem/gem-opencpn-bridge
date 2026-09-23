@@ -16,7 +16,7 @@ jobs:
         run: |
           git clone https://github.com/deeprey-marine/deeprey-ocharts.git ocharts
           cd ocharts
-          git submodule update --init --recursive
+          git submodule update --init opencpn-libs
 
       - name: Apply GEM selected-object probe
         shell: powershell
