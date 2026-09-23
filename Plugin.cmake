@@ -1,3 +1,17 @@
+set(OCPN_TEST_REPO
+    "ffolkes-gem/gem-opencpn-bridge"
+    CACHE STRING "Default repository for untagged builds"
+)
+
+set(OCPN_BETA_REPO
+    "ffolkes-gem/gem-opencpn-bridge"
+    CACHE STRING "Default repository for beta builds"
+)
+
+set(OCPN_RELEASE_REPO
+    "ffolkes-gem/gem-opencpn-bridge"
+    CACHE STRING "Default repository for release builds"
+)
 set(PKG_NAME gemtest_pi)
 set(PKG_VERSION 0.0.1.0)
 set(PKG_PRERELEASE "")
