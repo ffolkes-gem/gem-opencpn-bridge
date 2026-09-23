@@ -40,7 +40,7 @@ jobs:
           echo "$gettextBin" >> $env:GITHUB_PATH
           Write-Host "Gettext binaries: $gettextBin"
           
-        - name: Build dependencies and GEM Test
+    - name: Build dependencies and GEM Test
         shell: cmd
         working-directory: template
         env:
