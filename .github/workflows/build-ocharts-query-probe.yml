@@ -16,7 +16,6 @@ jobs:
         run: |
           git clone https://github.com/deeprey-marine/deeprey-ocharts.git ocharts
           cd ocharts
-          git config submodule.deeprey-api.url https://github.com/deeprey-marine/deeprey-api.git
           git submodule update --init --recursive
 
       - name: Apply GEM selected-object probe
