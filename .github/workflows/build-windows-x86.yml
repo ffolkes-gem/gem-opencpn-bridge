@@ -27,7 +27,20 @@ jobs:
           Copy-Item gem\src\gemtest_pi.cpp template\src\gemtest_pi.cpp -Force
           Copy-Item gem\include\gemtest_pi.h template\include\gemtest_pi.h -Force
 
-      - name: Build dependencies and GEM Test
+      - name: Install Gettext
+        shell: powershell
+        run: |
+          choco install gettext -y
+          $gettextBin = Get-ChildItem "C:\ProgramData\chocolatey\lib\gettext\tools" -Directory -Recurse |
+            Where-Object { Test-Path (Join-Path $_.FullName "msgfmt.exe") } |
+            Select-Object -First 1 -ExpandProperty FullName
+          if (-not $gettextBin) {
+            throw "Could not locate msgfmt.exe after installing gettext"
+          }
+          echo "$gettextBin" >> $env:GITHUB_PATH
+          Write-Host "Gettext binaries: $gettextBin"
+          
+        - name: Build dependencies and GEM Test
         shell: cmd
         working-directory: template
         env:
