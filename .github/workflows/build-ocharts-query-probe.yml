@@ -13,7 +13,11 @@ jobs:
 
       - name: Checkout o-charts source
         shell: cmd
-        run: git clone --recursive https://github.com/deeprey-marine/deeprey-ocharts.git ocharts
+        run: |
+          git clone https://github.com/deeprey-marine/deeprey-ocharts.git ocharts
+          cd ocharts
+          git config submodule.deeprey-api.url https://github.com/deeprey-marine/deeprey-api.git
+          git submodule update --init --recursive
 
       - name: Apply GEM selected-object probe
         shell: powershell
