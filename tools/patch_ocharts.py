@@ -13,207 +13,166 @@ def replace_once(src, old, new, label):
 
 
 # ------------------------------------------------------------
-# GEM +7
-# Object Query -> local structured JSON proof
+# GEM +8
+# Object Query -> direct local file-write proof
+#
+# Purpose:
+#   Prove that code executing inside CreateObjDescriptions()
+#   can write a file to the OpenCPN user-data directory.
+#
+# This deliberately does NOT attempt full JSON export yet.
 # ------------------------------------------------------------
 
-# Add <fstream> for writing the JSON file.
+
+# ------------------------------------------------------------
+# 1. Add wxWidgets file/path support.
+# ------------------------------------------------------------
+
 chart = replace_once(
     chart,
     """#include <unordered_map>
 """,
     """#include <unordered_map>
-#include <fstream>
+#include <wx/ffile.h>
+#include <wx/stdpaths.h>
+#include <wx/filename.h>
 """,
-    "fstream include"
+    "wx file includes"
 )
 
 
-# Add a small JSON escaping helper immediately before
-# CreateObjDescriptions().
+# ------------------------------------------------------------
+# 2. Mark entry into CreateObjDescriptions().
+#
+# This gives us an unmistakable +8 marker and confirms that
+# the installed DLL really is the +8 build.
+# ------------------------------------------------------------
+
 chart = replace_once(
     chart,
     """wxString eSENCChart::CreateObjDescriptions( ListOfPI_S57Obj* obj_list )
 {
 """,
-    r"""static wxString GEMJsonEscape(const wxString &input)
+    """wxString eSENCChart::CreateObjDescriptions( ListOfPI_S57Obj* obj_list )
 {
-    wxString s = input;
-    s.Replace(_T("\\"), _T("\\\\"));
-    s.Replace(_T("\""), _T("\\\""));
-    s.Replace(_T("\r"), _T("\\r"));
-    s.Replace(_T("\n"), _T("\\n"));
-    s.Replace(_T("\t"), _T("\\t"));
-    return s;
-}
-
-
-wxString eSENCChart::CreateObjDescriptions( ListOfPI_S57Obj* obj_list )
-{
-""",
-    "JSON escape helper"
-)
-
-
-# Initialise the GEM export document when Object Query is invoked.
-chart = replace_once(
-    chart,
-    """    PI_S57Light* curLight = NULL;
-
-    for( ListOfPI_S57Obj::Node *node = obj_list->GetLast(); node; node = node->GetPrevious() ) {
-""",
-    """    PI_S57Light* curLight = NULL;
-
-    wxString gemJson;
-    gemJson << _T("{\\n");
-    gemJson << _T("  \\"gem_format\\": \\"navigation-object-selection-v1\\",\\n");
-    gemJson << _T("  \\"objects\\": [\\n");
-    bool gemFirstObject = true;
-
-    for( ListOfPI_S57Obj::Node *node = obj_list->GetLast(); node; node = node->GetPrevious() ) {
-""",
-    "JSON document start"
-)
-
-
-# Create per-object export state.
-chart = replace_once(
-    chart,
-    """        className = wxString( current->FeatureName, wxConvUTF8 );
-
-        // Lights get grouped together to make display look nicer.
-""",
-    """        className = wxString( current->FeatureName, wxConvUTF8 );
-
-        double gemLat = 0.0;
-        double gemLon = 0.0;
-        bool gemHasPosition = false;
-        wxString gemAttributes;
-        bool gemFirstAttribute = true;
-
-        // Lights get grouped together to make display look nicer.
-""",
-    "per-object state"
-)
-
-
-# Capture the decoded point position.
-chart = replace_once(
-    chart,
-    """                if( lon > 180.0 ) lon -= 360.;
-
-                positionString.Clear();
-""",
-    """                if( lon > 180.0 ) lon -= 360.;
-
-                gemLat = lat;
-                gemLon = lon;
-                gemHasPosition = true;
-
-                positionString.Clear();
-""",
-    "position capture"
-)
-
-
-# Capture each decoded S-57 attribute BEFORE the existing display
-# formatting changes it.
-chart = replace_once(
-    chart,
-    """                    value = GetObjectAttributeValueAsString( current, attrCounter, curAttrName );
-
-                    if( isLight ) {
-""",
-    """                    value = GetObjectAttributeValueAsString( current, attrCounter, curAttrName );
-
-                    if( !gemFirstAttribute )
-                        gemAttributes << _T(",\\n");
-
-                    gemAttributes << _T("        \\"")
-                                  << GEMJsonEscape(curAttrName)
-                                  << _T("\\": \\"")
-                                  << GEMJsonEscape(value)
-                                  << _T("\\"");
-
-                    gemFirstAttribute = false;
-
-                    if( isLight ) {
-""",
-    "attribute capture"
-)
-
-
-# At the end of each selected object, append its structured record.
-chart = replace_once(
-    chart,
-    """            }
-    } // Object for loop
-""",
-    """            }
-
-        if( !gemFirstObject )
-            gemJson << _T(",\\n");
-
-        gemJson << _T("    {\\n");
-        gemJson << _T("      \\"feature\\": \\"")
-                << GEMJsonEscape(className)
-                << _T("\\"");
-
-        if( gemHasPosition ) {
-            gemJson << wxString::Format(
-                _T(",\\n      \\"latitude\\": %.8f,\\n      \\"longitude\\": %.8f"),
-                gemLat, gemLon
-            );
-        }
-
-        gemJson << _T(",\\n      \\"attributes\\": {");
-
-        if( !gemFirstAttribute )
-            gemJson << _T("\\n") << gemAttributes << _T("\\n      ");
-
-        gemJson << _T("}\\n");
-        gemJson << _T("    }");
-
-        gemFirstObject = false;
-
-    } // Object for loop
-
-    gemJson << _T("\\n  ]\\n}\\n");
-
-    wxString gemPath =
-        wxGetHomeDir() + wxFILE_SEP_PATH + _T("gem-selected-object.json");
-
-    std::ofstream gemFile(
-        gemPath.mb_str(wxConvUTF8),
-        std::ios::out | std::ios::trunc
+    wxLogMessage(
+        _T("GEMPROBE +8 JSON TEST ENTER objects=%lu"),
+        (unsigned long)obj_list->GetCount()
     );
-
-    if( gemFile.is_open() ) {
-        wxCharBuffer gemUtf8 = gemJson.ToUTF8();
-
-        if( gemUtf8.data() )
-            gemFile << gemUtf8.data();
-
-        gemFile.close();
-
-        wxLogMessage(
-            _T("GEMEXPORT wrote %lu objects to %s"),
-            (unsigned long)obj_list->GetCount(),
-            gemPath.c_str()
-        );
-    }
-    else {
-        wxLogMessage(
-            _T("GEMEXPORT ERROR unable to write %s"),
-            gemPath.c_str()
-        );
-    }
 """,
-    "JSON object and file output"
+    "CreateObjDescriptions +8 marker"
+)
+
+
+# ------------------------------------------------------------
+# 3. Write a tiny JSON file from inside the proven attribute
+#    processing path.
+#
+# We trigger on OBJNAM because South Kent has:
+#
+#       OBJNAM = South Kent
+#
+# This is deliberately located immediately after
+# GetObjectAttributeValueAsString(), which we already know
+# executes successfully during Object Query.
+# ------------------------------------------------------------
+
+chart = replace_once(
+    chart,
+    """                    value = GetObjectAttributeValueAsString( current, attrCounter, curAttrName );
+
+                    if( isLight ) {
+""",
+    r"""                    value = GetObjectAttributeValueAsString( current, attrCounter, curAttrName );
+
+                    // ------------------------------------------------
+                    // GEM +8 direct file-write proof.
+                    //
+                    // Only write when processing OBJNAM so that an
+                    // ordinary South Kent Object Query gives us one
+                    // simple, deterministic test.
+                    // ------------------------------------------------
+                    if( curAttrName == _T("OBJNAM") ) {
+
+                        wxString gemDir =
+                            wxStandardPaths::Get().GetUserDataDir();
+
+                        if( !wxDirExists(gemDir) ) {
+                            wxFileName::Mkdir(
+                                gemDir,
+                                wxS_DIR_DEFAULT,
+                                wxPATH_MKDIR_FULL
+                            );
+                        }
+
+                        wxString gemPath =
+                            gemDir +
+                            wxFILE_SEP_PATH +
+                            _T("gem-export-test.json");
+
+                        wxLogMessage(
+                            _T("GEMEXPORT +8 ATTEMPT feature=%s name=%s"),
+                            className.c_str(),
+                            value.c_str()
+                        );
+
+                        wxLogMessage(
+                            _T("GEMEXPORT +8 PATH=%s"),
+                            gemPath.c_str()
+                        );
+
+                        wxString gemTestJson;
+
+                        gemTestJson << _T("{\n");
+                        gemTestJson << _T("  \"gem_test\": true,\n");
+                        gemTestJson << _T("  \"feature\": \"")
+                                    << className
+                                    << _T("\",\n");
+                        gemTestJson << _T("  \"name\": \"")
+                                    << value
+                                    << _T("\"\n");
+                        gemTestJson << _T("}\n");
+
+                        wxFFile gemFile;
+
+                        if( gemFile.Open(gemPath, _T("wb")) ) {
+
+                            bool gemWriteOK =
+                                gemFile.Write(
+                                    gemTestJson,
+                                    wxConvUTF8
+                                );
+
+                            gemFile.Close();
+
+                            if( gemWriteOK ) {
+                                wxLogMessage(
+                                    _T("GEMEXPORT +8 WRITE OK path=%s"),
+                                    gemPath.c_str()
+                                );
+                            }
+                            else {
+                                wxLogMessage(
+                                    _T("GEMEXPORT +8 WRITE FAILED path=%s"),
+                                    gemPath.c_str()
+                                );
+                            }
+                        }
+                        else {
+                            wxLogMessage(
+                                _T("GEMEXPORT +8 OPEN FAILED path=%s"),
+                                gemPath.c_str()
+                            );
+                        }
+                    }
+
+                    if( isLight ) {
+""",
+    "direct file-write proof"
 )
 
 
 chart_path.write_text(chart, encoding="utf-8")
 
 print("Patched", chart_path)
-print("GEM +7: Object Query -> gem-selected-object.json")
+print("GEM +8: Object Query -> direct wxFFile JSON proof")
