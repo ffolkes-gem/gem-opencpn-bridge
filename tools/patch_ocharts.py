@@ -11,7 +11,7 @@ def replace_once(src, old, new, label):
 
 
 # ------------------------------------------------------------
-# GEM +13 cumulative
+# GEM +14 cumulative
 # Keeps +9 selected-object JSON intact.
 # Adds a deliberately small 5x5 diagnostic grid around the
 # user's normal Object Query click and writes a deduplicated
@@ -565,12 +565,20 @@ chart = replace_once(
                                     sampleEast / metresPerDegLon11
                                 );
 
+                            // +14: the hit-test viewport must be centred on
+                            // the coordinate being interrogated.  Reusing the
+                            // trigger viewport unchanged only works reliably
+                            // near the operator's original Object Query click.
+                            PlugIn_ViewPort routeVP = g_gemQueryVP;
+                            routeVP.clat = sampleLat;
+                            routeVP.clon = sampleLon;
+
                             ListOfPI_S57Obj *routeObjects =
                                 GetObjRuleListAtLatLon(
                                     sampleLat,
                                     sampleLon,
                                     g_gemQueryRadius,
-                                    &g_gemQueryVP
+                                    &routeVP
                                 );
 
                             routeSamples++;
@@ -691,12 +699,18 @@ chart = replace_once(
                         ei < enrichPoints.size();
                         ++ei
                     ) {
+                        // +14: centre a copied viewport on the discovered
+                        // mark before the exact-position component query.
+                        PlugIn_ViewPort enrichVP = g_gemQueryVP;
+                        enrichVP.clat = enrichPoints[ei].lat;
+                        enrichVP.clon = enrichPoints[ei].lon;
+
                         ListOfPI_S57Obj *exactObjects =
                             GetObjRuleListAtLatLon(
                                 (float)enrichPoints[ei].lat,
                                 (float)enrichPoints[ei].lon,
                                 g_gemQueryRadius,
-                                &g_gemQueryVP
+                                &enrichVP
                             );
 
                         enrichmentQueries++;
