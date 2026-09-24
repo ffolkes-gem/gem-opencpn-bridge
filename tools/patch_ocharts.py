@@ -570,8 +570,20 @@ chart = replace_once(
                             // trigger viewport unchanged only works reliably
                             // near the operator's original Object Query click.
                             PlugIn_ViewPort routeVP = g_gemQueryVP;
+
+                            // +15: move the viewport bounding box with its
+                            // centre.  +14 changed clat/clon only, leaving
+                            // lat_min/max and lon_min/max around the original
+                            // mouse-click viewport.  CreateCompatibleViewport()
+                            // uses these bounds in subsequent render checks.
+                            const double routeDLat = sampleLat - routeVP.clat;
+                            const double routeDLon = sampleLon - routeVP.clon;
                             routeVP.clat = sampleLat;
                             routeVP.clon = sampleLon;
+                            routeVP.lat_min += routeDLat;
+                            routeVP.lat_max += routeDLat;
+                            routeVP.lon_min += routeDLon;
+                            routeVP.lon_max += routeDLon;
 
                             ListOfPI_S57Obj *routeObjects =
                                 GetObjRuleListAtLatLon(
@@ -702,8 +714,16 @@ chart = replace_once(
                         // +14: centre a copied viewport on the discovered
                         // mark before the exact-position component query.
                         PlugIn_ViewPort enrichVP = g_gemQueryVP;
+                        const double enrichDLat =
+                            enrichPoints[ei].lat - enrichVP.clat;
+                        const double enrichDLon =
+                            enrichPoints[ei].lon - enrichVP.clon;
                         enrichVP.clat = enrichPoints[ei].lat;
                         enrichVP.clon = enrichPoints[ei].lon;
+                        enrichVP.lat_min += enrichDLat;
+                        enrichVP.lat_max += enrichDLat;
+                        enrichVP.lon_min += enrichDLon;
+                        enrichVP.lon_max += enrichDLon;
 
                         ListOfPI_S57Obj *exactObjects =
                             GetObjRuleListAtLatLon(
