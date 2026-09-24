@@ -11,7 +11,7 @@ def replace_once(src, old, new, label):
 
 
 # ------------------------------------------------------------
-# GEM +11 cumulative
+# GEM +12 cumulative
 # Keeps +9 selected-object JSON intact.
 # Adds a deliberately small 5x5 diagnostic grid around the
 # user's normal Object Query click and writes a deduplicated
@@ -505,6 +505,26 @@ chart = replace_once(
                     };
 
                     std::map<wxString, GEMRouteHit> routeHits;
+
+                    struct GEMCandidate {
+                        wxString primaryFeature;
+                        int primaryIndex;
+                        double lat;
+                        double lon;
+                        wxString name;
+                        wxString shape;
+                        wxString category;
+                        wxString colour;
+                        wxString information;
+                        wxArrayString componentFeatures;
+                        wxArrayInt componentIndexes;
+                        wxArrayString lightColours;
+                        wxArrayString lightCharacters;
+                        wxArrayString lightGroups;
+                        wxArrayString lightPeriods;
+                    };
+
+                    std::map<wxString, GEMCandidate> gemCandidates;
                     unsigned long routeSamples = 0;
 
                     g_gemInternalScan = true;
@@ -680,6 +700,21 @@ chart = replace_once(
                         enrichmentQueries++;
 
                         if( exactObjects ) {
+
+                            // Build one logical GEM candidate for the primary
+                            // buoy/beacon which caused this enrichment query.
+                            wxString candidateKey = wxString::Format(
+                                _T("%.7f:%.7f"),
+                                enrichPoints[ei].lat,
+                                enrichPoints[ei].lon
+                            );
+
+                            GEMCandidate candidate;
+                            candidate.primaryFeature = _T("");
+                            candidate.primaryIndex = -1;
+                            candidate.lat = enrichPoints[ei].lat;
+                            candidate.lon = enrichPoints[ei].lon;
+
                             for(
                                 ListOfPI_S57Obj::Node *en =
                                     exactObjects->GetFirst();
@@ -699,6 +734,126 @@ chart = replace_once(
                                         _T(":%d"),
                                         eo->Index
                                     );
+
+                                // Only components at the exact primary-mark
+                                // position belong to the logical candidate.
+                                bool samePosition = false;
+                                double componentLat = 0.0;
+                                double componentLon = 0.0;
+
+                                if( eo->npt == 1 ) {
+                                    fromSM_Plugin(
+                                        (eo->x * eo->x_rate) + eo->x_origin,
+                                        (eo->y * eo->y_rate) + eo->y_origin,
+                                        m_ref_lat,
+                                        m_ref_lon,
+                                        &componentLat,
+                                        &componentLon
+                                    );
+
+                                    if( componentLon > 180.0 )
+                                        componentLon -= 360.0;
+
+                                    const double dLat =
+                                        fabs(componentLat - enrichPoints[ei].lat);
+                                    const double dLon =
+                                        fabs(componentLon - enrichPoints[ei].lon);
+
+                                    samePosition =
+                                        dLat < 0.000002 &&
+                                        dLon < 0.000002;
+                                }
+
+                                if( samePosition ) {
+                                    bool componentAlreadyAdded = false;
+
+                                    for( size_t ci = 0;
+                                         ci < candidate.componentFeatures.GetCount();
+                                         ++ci ) {
+                                        if( candidate.componentFeatures[ci] == feature &&
+                                            candidate.componentIndexes[ci] == eo->Index ) {
+                                            componentAlreadyAdded = true;
+                                            break;
+                                        }
+                                    }
+
+                                    if( !componentAlreadyAdded ) {
+                                        candidate.componentFeatures.Add(feature);
+                                        candidate.componentIndexes.Add(eo->Index);
+                                    }
+
+                                    bool isPrimary =
+                                        feature == _T("BOYLAT") ||
+                                        feature == _T("BOYCAR") ||
+                                        feature == _T("BOYSAW") ||
+                                        feature == _T("BOYISD") ||
+                                        feature == _T("BOYSPP") ||
+                                        feature == _T("BCNLAT") ||
+                                        feature == _T("BCNCAR") ||
+                                        feature == _T("BCNSAW") ||
+                                        feature == _T("BCNSPP");
+
+                                    if( isPrimary ) {
+                                        candidate.primaryFeature = feature;
+                                        candidate.primaryIndex = eo->Index;
+                                    }
+
+                                    wxString lightColour;
+                                    wxString lightCharacter;
+                                    wxString lightGroup;
+                                    wxString lightPeriod;
+
+                                    for( int ai = 0; ai < eo->n_attr; ++ai ) {
+                                        wxString attrName(
+                                            eo->att_array + (ai * 6),
+                                            wxConvUTF8,
+                                            6
+                                        );
+
+                                        wxString attrValue =
+                                            GetObjectAttributeValueAsString(
+                                                eo,
+                                                ai,
+                                                attrName
+                                            );
+
+                                        attrName.Trim(true).Trim(false);
+
+                                        if( isPrimary ) {
+                                            if( attrName == _T("OBJNAM") )
+                                                candidate.name = attrValue;
+                                            else if( attrName == _T("BOYSHP") ||
+                                                     attrName == _T("BCNSHP") )
+                                                candidate.shape = attrValue;
+                                            else if( attrName == _T("CATLAM") ||
+                                                     attrName == _T("CATCAM") ||
+                                                     attrName == _T("CATSPM") )
+                                                candidate.category = attrValue;
+                                            else if( attrName == _T("COLOUR") )
+                                                candidate.colour = attrValue;
+                                            else if( attrName == _T("INFORM") )
+                                                candidate.information = attrValue;
+                                        }
+
+                                        if( feature == _T("LIGHTS") ) {
+                                            if( attrName == _T("COLOUR") )
+                                                lightColour = attrValue;
+                                            else if( attrName == _T("LITCHR") )
+                                                lightCharacter = attrValue;
+                                            else if( attrName == _T("SIGGRP") )
+                                                lightGroup = attrValue;
+                                            else if( attrName == _T("SIGPER") )
+                                                lightPeriod = attrValue;
+                                        }
+                                    }
+
+                                    if( feature == _T("LIGHTS") ) {
+                                        candidate.lightColours.Add(lightColour);
+                                        candidate.lightCharacters.Add(lightCharacter);
+                                        candidate.lightGroups.Add(lightGroup);
+                                        candidate.lightPeriods.Add(lightPeriod);
+                                    }
+                                }
 
                                 std::map<wxString, GEMRouteHit>::iterator hitIt =
                                     routeHits.find(key);
@@ -742,6 +897,9 @@ chart = replace_once(
                                     hitIt->second.enriched = true;
                                 }
                             }
+
+                            if( !candidate.primaryFeature.IsEmpty() )
+                                gemCandidates[candidateKey] = candidate;
 
                             delete exactObjects;
                         }
@@ -871,6 +1029,128 @@ chart = replace_once(
                             routeOutputPath.c_str()
                         );
                     }
+
+                    // +12 normalized candidate output.
+                    wxString candidatesJson;
+                    candidatesJson << _T("{\n");
+                    candidatesJson << _T("  \"gem_format\": \"route-navigation-candidates-v1\",\n");
+                    candidatesJson << _T("  \"candidates\": [\n");
+
+                    bool firstCandidate = true;
+
+                    for(
+                        std::map<wxString, GEMCandidate>::const_iterator cit =
+                            gemCandidates.begin();
+                        cit != gemCandidates.end();
+                        ++cit
+                    ) {
+                        const GEMCandidate &c = cit->second;
+
+                        if( !firstCandidate )
+                            candidatesJson << _T(",\n");
+
+                        candidatesJson << _T("    {\n");
+                        candidatesJson << _T("      \"name\": \"")
+                                       << GEMJsonEscape(c.name)
+                                       << _T("\",\n");
+                        candidatesJson << _T("      \"primary_feature\": \"")
+                                       << GEMJsonEscape(c.primaryFeature)
+                                       << _T("\",\n");
+                        candidatesJson << wxString::Format(
+                            _T("      \"primary_index\": %d,\n"),
+                            c.primaryIndex
+                        );
+                        candidatesJson << wxString::Format(
+                            _T("      \"position\": {\"latitude\": %.8f, \"longitude\": %.8f},\n"),
+                            c.lat, c.lon
+                        );
+                        candidatesJson << _T("      \"shape\": \"")
+                                       << GEMJsonEscape(c.shape)
+                                       << _T("\",\n");
+                        candidatesJson << _T("      \"category\": \"")
+                                       << GEMJsonEscape(c.category)
+                                       << _T("\",\n");
+                        candidatesJson << _T("      \"colour\": \"")
+                                       << GEMJsonEscape(c.colour)
+                                       << _T("\",\n");
+                        candidatesJson << _T("      \"information\": \"")
+                                       << GEMJsonEscape(c.information)
+                                       << _T("\",\n");
+
+                        candidatesJson << _T("      \"components\": [");
+                        for( size_t ci = 0;
+                             ci < c.componentFeatures.GetCount();
+                             ++ci ) {
+                            if( ci ) candidatesJson << _T(", ");
+                            candidatesJson << _T("{\"feature\": \"")
+                                           << GEMJsonEscape(c.componentFeatures[ci])
+                                           << _T("\", \"index\": ")
+                                           << wxString::Format(
+                                               _T("%d"),
+                                               c.componentIndexes[ci]
+                                           )
+                                           << _T("}");
+                        }
+                        candidatesJson << _T("],\n");
+
+                        candidatesJson << _T("      \"lights\": [");
+                        for( size_t li = 0;
+                             li < c.lightCharacters.GetCount();
+                             ++li ) {
+                            if( li ) candidatesJson << _T(", ");
+                            candidatesJson << _T("{\"colour\": \"")
+                                           << GEMJsonEscape(c.lightColours[li])
+                                           << _T("\", \"character\": \"")
+                                           << GEMJsonEscape(c.lightCharacters[li])
+                                           << _T("\", \"group\": \"")
+                                           << GEMJsonEscape(c.lightGroups[li])
+                                           << _T("\", \"period\": \"")
+                                           << GEMJsonEscape(c.lightPeriods[li])
+                                           << _T("\"}");
+                        }
+                        candidatesJson << _T("]\n");
+                        candidatesJson << _T("    }");
+
+                        firstCandidate = false;
+                    }
+
+                    candidatesJson << _T("\n  ],\n");
+                    candidatesJson << wxString::Format(
+                        _T("  \"candidate_count\": %lu\n"),
+                        (unsigned long)gemCandidates.size()
+                    );
+                    candidatesJson << _T("}\n");
+
+                    wxString candidatesPath =
+                        gemDir +
+                        wxFILE_SEP_PATH +
+                        _T("gem-route-candidates.json");
+
+                    wxFFile candidatesFile;
+
+                    if( candidatesFile.Open(candidatesPath, _T("wb")) ) {
+                        bool candidatesOK =
+                            candidatesFile.Write(
+                                candidatesJson,
+                                wxConvUTF8
+                            );
+
+                        candidatesFile.Close();
+
+                        wxLogMessage(
+                            candidatesOK
+                                ? _T(
+                                    "GEMCANDIDATES +12 WRITE OK "
+                                    "candidates=%lu path=%s"
+                                )
+                                : _T(
+                                    "GEMCANDIDATES +12 WRITE FAILED "
+                                    "candidates=%lu path=%s"
+                                ),
+                            (unsigned long)gemCandidates.size(),
+                            candidatesPath.c_str()
+                        );
+                    }
                 }
                 else {
                     wxLogMessage(
@@ -905,3 +1185,4 @@ print("Patched", chart_path)
 print("GEM +11: +9 selected-object export retained")
 print("GEM +11: +10 corridor diagnostic retained")
 print("GEM +11: bounded 2-point route diagnostic -> gem-route-test.json")
+print("GEM +12: normalized navigation candidates -> gem-route-candidates.json")
