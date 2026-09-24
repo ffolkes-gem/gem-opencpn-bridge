@@ -529,9 +529,6 @@ chart = replace_once(
                     std::map<wxString, GEMCandidate> gemCandidates;
                     unsigned long routeSamples = 0;
 
-
-                    unsigned long routeSamples = 0;
-
                     g_gemInternalScan = true;
 
                     // +16 first pass: scan every route leg using the proven
@@ -1052,11 +1049,11 @@ chart = replace_once(
                         wxLogMessage(
                             ok
                                 ? _T(
-                                    "GEMROUTE +11 WRITE OK "
+                                    "GEMROUTE +16b WRITE OK "
                                     "objects=%lu samples=%lu enrich=%lu path=%s"
                                 )
                                 : _T(
-                                    "GEMROUTE +11 WRITE FAILED "
+                                    "GEMROUTE +16b WRITE FAILED "
                                     "objects=%lu samples=%lu enrich=%lu path=%s"
                                 ),
                             (unsigned long)routeHits.size(),
@@ -1264,11 +1261,11 @@ chart = replace_once(
                         wxLogMessage(
                             candidatesOK
                                 ? _T(
-                                    "GEMCANDIDATES +13 WRITE OK "
+                                    "GEMCANDIDATES +16b WRITE OK "
                                     "candidates=%lu path=%s"
                                 )
                                 : _T(
-                                    "GEMCANDIDATES +13 WRITE FAILED "
+                                    "GEMCANDIDATES +16b WRITE FAILED "
                                     "candidates=%lu path=%s"
                                 ),
                             (unsigned long)gemCandidates.size(),
@@ -1281,7 +1278,7 @@ chart = replace_once(
                 else {
                     wxLogMessage(
                         _T(
-                            "GEMROUTE +11 SKIPPED: "
+                            "GEMROUTE +16b SKIPPED: "
                             "route length %.1f m outside diagnostic limit"
                         ),
                         routeLength
@@ -1291,9 +1288,9 @@ chart = replace_once(
             else {
                 wxLogMessage(
                     _T(
-                        "GEMROUTE +11 SKIPPED: "
-                        "gem-route-query.json must contain exactly "
-                        "two lat/lon route points"
+                        "GEMROUTE +16b SKIPPED: "
+                        "gem-route-query.json must contain 2 to 32 "
+                        "lat/lon route points"
                     )
                 );
             }
@@ -1310,5 +1307,5 @@ chart_path.write_text(chart, encoding="utf-8")
 print("Patched", chart_path)
 print("GEM +11: +9 selected-object export retained")
 print("GEM +11: +10 corridor diagnostic retained")
-print("GEM +11: bounded 2-point route diagnostic -> gem-route-test.json")
-print("GEM +13: normalized/raw navigation candidates -> gem-route-candidates-v2.json")
+print("GEM +16b: bounded 2-32 point / 30 km route diagnostic -> gem-route-test.json")
+print("GEM +16b: normalized/raw navigation candidates -> gem-route-candidates-v2.json")
