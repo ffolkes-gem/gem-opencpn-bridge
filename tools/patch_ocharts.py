@@ -1063,11 +1063,11 @@ chart = replace_once(
                         wxLogMessage(
                             ok
                                 ? _T(
-                                    "GEMROUTE +17 WRITE OK "
+                                    "GEMROUTE +18 WRITE OK "
                                     "objects=%lu samples=%lu enrich=%lu path=%s"
                                 )
                                 : _T(
-                                    "GEMROUTE +17 WRITE FAILED "
+                                    "GEMROUTE +18 WRITE FAILED "
                                     "objects=%lu samples=%lu enrich=%lu path=%s"
                                 ),
                             (unsigned long)routeHits.size(),
@@ -1109,8 +1109,57 @@ chart = replace_once(
                             }                                                          \
                         }
 
-                    // +17 diagnostic file. The existing route and candidate
-                    // outputs remain unchanged.
+                    // +18 viewport/chart-state diagnostic.
+                    // Acquisition logic is deliberately unchanged from +17.
+                    wxString vpJson;
+                    vpJson << _T("{\n");
+                    vpJson << _T("  \"gem_format\": \"viewport-diagnostic-v1\",\n");
+                    vpJson << _T("  \"scanner_version\": \"GEM +18\",\n");
+                    vpJson << wxString::Format(
+                        _T("  \"centre\": {\"latitude\": %.8f, \"longitude\": %.8f},\n"),
+                        g_gemQueryVP.clat, g_gemQueryVP.clon);
+                    vpJson << wxString::Format(
+                        _T("  \"bounds\": {\"lat_min\": %.8f, \"lat_max\": %.8f, "
+                           "\"lon_min\": %.8f, \"lon_max\": %.8f},\n"),
+                        g_gemQueryVP.lat_min, g_gemQueryVP.lat_max,
+                        g_gemQueryVP.lon_min, g_gemQueryVP.lon_max);
+                    vpJson << wxString::Format(
+                        _T("  \"pixel_size\": {\"width\": %d, \"height\": %d},\n"),
+                        g_gemQueryVP.pix_width, g_gemQueryVP.pix_height);
+                    vpJson << wxString::Format(
+                        _T("  \"view_scale_ppm\": %.12g,\n"),
+                        g_gemQueryVP.view_scale_ppm);
+                    vpJson << wxString::Format(
+                        _T("  \"chart_scale\": %.12g,\n"),
+                        g_gemQueryVP.chart_scale);
+                    vpJson << wxString::Format(
+                        _T("  \"rotation_radians\": %.12g,\n"),
+                        g_gemQueryVP.rotation);
+                    vpJson << wxString::Format(
+                        _T("  \"skew_radians\": %.12g,\n"),
+                        g_gemQueryVP.skew);
+                    vpJson << wxString::Format(
+                        _T("  \"route\": {\"length_metres\": %.1f, "
+                           "\"waypoint_count\": %d, \"sample_count\": %lu},\n"),
+                        routeLength, routePointCount, routeSamples);
+                    vpJson << _T("  \"note\": \"Cached viewport from the normal Object Query which seeded the route scan\"\n");
+                    vpJson << _T("}\n");
+
+                    wxString vpPath =
+                        gemDir + wxFILE_SEP_PATH + _T("gem-viewport-diagnostic.json");
+                    wxFFile vpFile;
+                    if( vpFile.Open(vpPath, _T("wb")) ) {
+                        bool vpOK = vpFile.Write(vpJson, wxConvUTF8);
+                        vpFile.Close();
+                        wxLogMessage(
+                            vpOK
+                                ? _T("GEMVIEW +18 WRITE OK path=%s")
+                                : _T("GEMVIEW +18 WRITE FAILED path=%s"),
+                            vpPath.c_str());
+                    }
+
+                    // +17/+18 route-return diagnostic. The existing route and
+                    // candidate outputs remain unchanged.
                     wxString diagJson;
                     diagJson << _T("{\n");
                     diagJson << _T("  \"gem_format\": \"route-diagnostic-v1\",\n");
@@ -1135,8 +1184,8 @@ chart = replace_once(
                         diagFile.Close();
                         wxLogMessage(
                             diagOK
-                                ? _T("GEMDIAG +17 WRITE OK path=%s")
-                                : _T("GEMDIAG +17 WRITE FAILED path=%s"),
+                                ? _T("GEMDIAG +18 WRITE OK path=%s")
+                                : _T("GEMDIAG +18 WRITE FAILED path=%s"),
                             diagPath.c_str());
                     }
 
@@ -1306,11 +1355,11 @@ chart = replace_once(
                         wxLogMessage(
                             candidatesOK
                                 ? _T(
-                                    "GEMCANDIDATES +17 WRITE OK "
+                                    "GEMCANDIDATES +18 WRITE OK "
                                     "candidates=%lu path=%s"
                                 )
                                 : _T(
-                                    "GEMCANDIDATES +17 WRITE FAILED "
+                                    "GEMCANDIDATES +18 WRITE FAILED "
                                     "candidates=%lu path=%s"
                                 ),
                             (unsigned long)gemCandidates.size(),
@@ -1323,7 +1372,7 @@ chart = replace_once(
                 else {
                     wxLogMessage(
                         _T(
-                            "GEMROUTE +17 SKIPPED: "
+                            "GEMROUTE +18 SKIPPED: "
                             "route length %.1f m outside diagnostic limit"
                         ),
                         routeLength
@@ -1333,7 +1382,7 @@ chart = replace_once(
             else {
                 wxLogMessage(
                     _T(
-                        "GEMROUTE +17 SKIPPED: "
+                        "GEMROUTE +18 SKIPPED: "
                         "gem-route-query.json must contain 2 to 32 "
                         "lat/lon route points"
                     )
@@ -1352,5 +1401,5 @@ chart_path.write_text(chart, encoding="utf-8")
 print("Patched", chart_path)
 print("GEM +11: +9 selected-object export retained")
 print("GEM +11: +10 corridor diagnostic retained")
-print("GEM +17: bounded 2-32 point / 30 km route diagnostic -> gem-route-test.json")
-print("GEM +17: normalized/raw navigation candidates -> gem-route-candidates-v2.json")
+print("GEM +18: bounded 2-32 point / 30 km route diagnostic -> gem-route-test.json")
+print("GEM +18: normalized/raw navigation candidates -> gem-route-candidates-v2.json")
