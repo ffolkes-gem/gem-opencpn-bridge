@@ -529,6 +529,10 @@ chart = replace_once(
                     std::map<wxString, GEMCandidate> gemCandidates;
                     unsigned long routeSamples = 0;
 
+                    // +17 diagnostic: count returned objects in five route bands.
+                    unsigned long gemDiagQueries[5] = {0,0,0,0,0};
+                    unsigned long gemDiagObjects[5] = {0,0,0,0,0};
+
                     g_gemInternalScan = true;
 
                     // +16 first pass: scan every route leg using the proven
@@ -598,6 +602,16 @@ chart = replace_once(
                                         g_gemQueryRadius, &routeVP);
 
                                 routeSamples++;
+
+                                // +17: assign each query to one of five broad
+                                // route-position bands. This changes no selection logic.
+                                int gemDiagBand = (int)((routeSamples - 1) * 5 / 924);
+                                if( gemDiagBand < 0 ) gemDiagBand = 0;
+                                if( gemDiagBand > 4 ) gemDiagBand = 4;
+                                gemDiagQueries[gemDiagBand]++;
+                                if( routeObjects )
+                                    gemDiagObjects[gemDiagBand] +=
+                                        (unsigned long)routeObjects->GetCount();
 
                                 if( routeObjects ) {
                                     for(
@@ -1049,11 +1063,11 @@ chart = replace_once(
                         wxLogMessage(
                             ok
                                 ? _T(
-                                    "GEMROUTE +16b WRITE OK "
+                                    "GEMROUTE +17 WRITE OK "
                                     "objects=%lu samples=%lu enrich=%lu path=%s"
                                 )
                                 : _T(
-                                    "GEMROUTE +16b WRITE FAILED "
+                                    "GEMROUTE +17 WRITE FAILED "
                                     "objects=%lu samples=%lu enrich=%lu path=%s"
                                 ),
                             (unsigned long)routeHits.size(),
@@ -1094,6 +1108,37 @@ chart = replace_once(
                                 }                                                      \
                             }                                                          \
                         }
+
+                    // +17 diagnostic file. The existing route and candidate
+                    // outputs remain unchanged.
+                    wxString diagJson;
+                    diagJson << _T("{\n");
+                    diagJson << _T("  \"gem_format\": \"route-diagnostic-v1\",\n");
+                    diagJson << wxString::Format(
+                        _T("  \"route_length_metres\": %.1f,\n"), routeLength);
+                    diagJson << wxString::Format(
+                        _T("  \"waypoint_count\": %d,\n"), routePointCount);
+                    diagJson << _T("  \"bands\": [\n");
+                    for( int di = 0; di < 5; ++di ) {
+                        if( di ) diagJson << _T(",\n");
+                        diagJson << wxString::Format(
+                            _T("    {\"band\": %d, \"queries\": %lu, \"returned_objects\": %lu}"),
+                            di + 1, gemDiagQueries[di], gemDiagObjects[di]);
+                    }
+                    diagJson << _T("\n  ]\n}\n");
+
+                    wxString diagPath =
+                        gemDir + wxFILE_SEP_PATH + _T("gem-route-diagnostic.json");
+                    wxFFile diagFile;
+                    if( diagFile.Open(diagPath, _T("wb")) ) {
+                        bool diagOK = diagFile.Write(diagJson, wxConvUTF8);
+                        diagFile.Close();
+                        wxLogMessage(
+                            diagOK
+                                ? _T("GEMDIAG +17 WRITE OK path=%s")
+                                : _T("GEMDIAG +17 WRITE FAILED path=%s"),
+                            diagPath.c_str());
+                    }
 
                     wxString candidatesJson;
                     candidatesJson << _T("{\n");
@@ -1261,11 +1306,11 @@ chart = replace_once(
                         wxLogMessage(
                             candidatesOK
                                 ? _T(
-                                    "GEMCANDIDATES +16b WRITE OK "
+                                    "GEMCANDIDATES +17 WRITE OK "
                                     "candidates=%lu path=%s"
                                 )
                                 : _T(
-                                    "GEMCANDIDATES +16b WRITE FAILED "
+                                    "GEMCANDIDATES +17 WRITE FAILED "
                                     "candidates=%lu path=%s"
                                 ),
                             (unsigned long)gemCandidates.size(),
@@ -1278,7 +1323,7 @@ chart = replace_once(
                 else {
                     wxLogMessage(
                         _T(
-                            "GEMROUTE +16b SKIPPED: "
+                            "GEMROUTE +17 SKIPPED: "
                             "route length %.1f m outside diagnostic limit"
                         ),
                         routeLength
@@ -1288,7 +1333,7 @@ chart = replace_once(
             else {
                 wxLogMessage(
                     _T(
-                        "GEMROUTE +16b SKIPPED: "
+                        "GEMROUTE +17 SKIPPED: "
                         "gem-route-query.json must contain 2 to 32 "
                         "lat/lon route points"
                     )
@@ -1307,5 +1352,5 @@ chart_path.write_text(chart, encoding="utf-8")
 print("Patched", chart_path)
 print("GEM +11: +9 selected-object export retained")
 print("GEM +11: +10 corridor diagnostic retained")
-print("GEM +16b: bounded 2-32 point / 30 km route diagnostic -> gem-route-test.json")
-print("GEM +16b: normalized/raw navigation candidates -> gem-route-candidates-v2.json")
+print("GEM +17: bounded 2-32 point / 30 km route diagnostic -> gem-route-test.json")
+print("GEM +17: normalized/raw navigation candidates -> gem-route-candidates-v2.json")
