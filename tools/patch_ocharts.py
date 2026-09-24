@@ -11,7 +11,7 @@ def replace_once(src, old, new, label):
 
 
 # ------------------------------------------------------------
-# GEM +11
+# GEM +11 cumulative
 # Keeps +9 selected-object JSON intact.
 # Adds a deliberately small 5x5 diagnostic grid around the
 # user's normal Object Query click and writes a deduplicated
@@ -179,6 +179,209 @@ chart = replace_once(
     """            }
     } // Object for loop
 
+    // Add the additional info files
+""",
+    r"""            }
+
+        if( !gemFirstObject )
+            gemJson << _T(",\n");
+
+        gemJson << _T("    {\n");
+        gemJson << _T("      \"feature\": \"")
+                << GEMJsonEscape(className)
+                << _T("\",\n");
+        gemJson << wxString::Format(_T("      \"index\": %d"), current->Index);
+
+        if( gemHasPosition ) {
+            gemJson << wxString::Format(
+                _T(",\n      \"latitude\": %.8f,\n      \"longitude\": %.8f"),
+                gemLat, gemLon
+            );
+        }
+
+        gemJson << _T(",\n      \"attributes\": {");
+        if( !gemFirstAttribute )
+            gemJson << _T("\n") << gemAttributes << _T("\n      ");
+        gemJson << _T("}\n");
+        gemJson << _T("    }");
+
+        gemFirstObject = false;
+        gemExportedObjects++;
+
+    } // Object for loop
+
+    gemJson << _T("\n  ],\n");
+    gemJson << wxString::Format(_T("  \"object_count\": %lu\n"), gemExportedObjects);
+    gemJson << _T("}\n");
+
+    wxString gemDir = wxStandardPaths::Get().GetUserDataDir();
+    if( !wxDirExists(gemDir) )
+        wxFileName::Mkdir(gemDir, wxS_DIR_DEFAULT, wxPATH_MKDIR_FULL);
+
+    wxString gemPath = gemDir + wxFILE_SEP_PATH + _T("gem-selected-object.json");
+    wxFFile gemFile;
+    if( gemFile.Open(gemPath, _T("wb")) ) {
+        bool ok = gemFile.Write(gemJson, wxConvUTF8);
+        gemFile.Close();
+        wxLogMessage(
+            ok ? _T("GEMEXPORT +10 SELECTED WRITE OK objects=%lu path=%s")
+               : _T("GEMEXPORT +10 SELECTED WRITE FAILED objects=%lu path=%s"),
+            gemExportedObjects, gemPath.c_str()
+        );
+    }
+
+    // --------------------------------------------------------
+    // +10 SMALL DIAGNOSTIC GRID
+    // 5x5 points centred on the user's Object Query.
+    // Approx 50 m spacing N/S and E/W.
+    // This is intentionally a local proof, not a chart sweep.
+    // --------------------------------------------------------
+    if( g_gemHaveQuery ) {
+        struct GEMHit {
+            wxString feature;
+            int index;
+            double lat;
+            double lon;
+            bool hasPosition;
+            unsigned long hits;
+        };
+
+        std::map<wxString, GEMHit> gemHits;
+
+        const double metresPerDegLat = 111320.0;
+        const double pi = 3.14159265358979323846;
+        const double cosLat = cos(((double)g_gemQueryLat) * pi / 180.0);
+        const double metresPerDegLon =
+            (fabs(cosLat) > 0.01) ? (111320.0 * cosLat) : 111320.0;
+        const double spacingM = 50.0;
+
+        unsigned long sampleCount = 0;
+        g_gemInternalScan = true;
+
+        for( int row = -2; row <= 2; ++row ) {
+            for( int col = -2; col <= 2; ++col ) {
+                const float sampleLat =
+                    (float)(g_gemQueryLat + (row * spacingM / metresPerDegLat));
+                const float sampleLon =
+                    (float)(g_gemQueryLon + (col * spacingM / metresPerDegLon));
+
+                ListOfPI_S57Obj *sampleObjects =
+                    GetObjRuleListAtLatLon(
+                        sampleLat,
+                        sampleLon,
+                        g_gemQueryRadius,
+                        &g_gemQueryVP
+                    );
+
+                sampleCount++;
+
+                if( sampleObjects ) {
+                    for( ListOfPI_S57Obj::Node *gn = sampleObjects->GetFirst();
+                         gn; gn = gn->GetNext() ) {
+                        PI_S57Obj *go = gn->GetData();
+                        wxString feature(go->FeatureName, wxConvUTF8);
+                        wxString key = feature +
+                            wxString::Format(_T(":%d"), go->Index);
+
+                        std::map<wxString, GEMHit>::iterator it = gemHits.find(key);
+                        if( it == gemHits.end() ) {
+                            GEMHit hit;
+                            hit.feature = feature;
+                            hit.index = go->Index;
+                            hit.lat = 0.0;
+                            hit.lon = 0.0;
+                            hit.hasPosition = false;
+                            hit.hits = 1;
+
+                            if( go->npt == 1 ) {
+                                double olon, olat;
+                                fromSM_Plugin(
+                                    (go->x * go->x_rate) + go->x_origin,
+                                    (go->y * go->y_rate) + go->y_origin,
+                                    m_ref_lat, m_ref_lon,
+                                    &olat, &olon
+                                );
+                                if( olon > 180.0 ) olon -= 360.0;
+                                hit.lat = olat;
+                                hit.lon = olon;
+                                hit.hasPosition = true;
+                            }
+                            gemHits[key] = hit;
+                        }
+                        else {
+                            it->second.hits++;
+                        }
+                    }
+
+                    // GetObjRuleListAtLatLon() sets DeleteContents(true).
+                    delete sampleObjects;
+                }
+            }
+        }
+
+        g_gemInternalScan = false;
+
+        wxString corridor;
+        corridor << _T("{\n");
+        corridor << _T("  \"gem_format\": \"corridor-query-test-v1\",\n");
+        corridor << wxString::Format(
+            _T("  \"trigger\": {\"latitude\": %.8f, \"longitude\": %.8f},\n"),
+            (double)g_gemQueryLat, (double)g_gemQueryLon
+        );
+        corridor << wxString::Format(
+            _T("  \"grid\": {\"rows\": 5, \"columns\": 5, \"spacing_metres\": 50, \"sample_count\": %lu},\n"),
+            sampleCount
+        );
+        corridor << _T("  \"objects\": [\n");
+
+        bool firstHit = true;
+        for( std::map<wxString, GEMHit>::const_iterator it = gemHits.begin();
+             it != gemHits.end(); ++it ) {
+            const GEMHit &h = it->second;
+            if( !firstHit ) corridor << _T(",\n");
+
+            corridor << _T("    {\"feature\": \"")
+                     << GEMJsonEscape(h.feature)
+                     << _T("\", \"index\": ")
+                     << wxString::Format(_T("%d"), h.index);
+
+            if( h.hasPosition ) {
+                corridor << wxString::Format(
+                    _T(", \"latitude\": %.8f, \"longitude\": %.8f"),
+                    h.lat, h.lon
+                );
+            }
+
+            corridor << wxString::Format(
+                _T(", \"hits\": %lu}"),
+                h.hits
+            );
+            firstHit = false;
+        }
+
+        corridor << _T("\n  ],\n");
+        corridor << wxString::Format(
+            _T("  \"object_count\": %lu\n"),
+            (unsigned long)gemHits.size()
+        );
+        corridor << _T("}\n");
+
+        wxString corridorPath =
+            gemDir + wxFILE_SEP_PATH + _T("gem-corridor-test.json");
+
+        wxFFile corridorFile;
+        if( corridorFile.Open(corridorPath, _T("wb")) ) {
+            bool ok = corridorFile.Write(corridor, wxConvUTF8);
+            corridorFile.Close();
+            wxLogMessage(
+                ok ? _T("GEMCORRIDOR +10 WRITE OK objects=%lu samples=%lu path=%s")
+                   : _T("GEMCORRIDOR +10 WRITE FAILED objects=%lu samples=%lu path=%s"),
+                (unsigned long)gemHits.size(),
+                sampleCount,
+                corridorPath.c_str()
+            );
+        }
+    }
 
     // --------------------------------------------------------
     // +11 ROUTE-SHAPED DIAGNOSTIC
@@ -688,210 +891,6 @@ chart = replace_once(
                     )
                 );
             }
-        }
-    }
-
-    // Add the additional info files
-""",
-    r"""            }
-
-        if( !gemFirstObject )
-            gemJson << _T(",\n");
-
-        gemJson << _T("    {\n");
-        gemJson << _T("      \"feature\": \"")
-                << GEMJsonEscape(className)
-                << _T("\",\n");
-        gemJson << wxString::Format(_T("      \"index\": %d"), current->Index);
-
-        if( gemHasPosition ) {
-            gemJson << wxString::Format(
-                _T(",\n      \"latitude\": %.8f,\n      \"longitude\": %.8f"),
-                gemLat, gemLon
-            );
-        }
-
-        gemJson << _T(",\n      \"attributes\": {");
-        if( !gemFirstAttribute )
-            gemJson << _T("\n") << gemAttributes << _T("\n      ");
-        gemJson << _T("}\n");
-        gemJson << _T("    }");
-
-        gemFirstObject = false;
-        gemExportedObjects++;
-
-    } // Object for loop
-
-    gemJson << _T("\n  ],\n");
-    gemJson << wxString::Format(_T("  \"object_count\": %lu\n"), gemExportedObjects);
-    gemJson << _T("}\n");
-
-    wxString gemDir = wxStandardPaths::Get().GetUserDataDir();
-    if( !wxDirExists(gemDir) )
-        wxFileName::Mkdir(gemDir, wxS_DIR_DEFAULT, wxPATH_MKDIR_FULL);
-
-    wxString gemPath = gemDir + wxFILE_SEP_PATH + _T("gem-selected-object.json");
-    wxFFile gemFile;
-    if( gemFile.Open(gemPath, _T("wb")) ) {
-        bool ok = gemFile.Write(gemJson, wxConvUTF8);
-        gemFile.Close();
-        wxLogMessage(
-            ok ? _T("GEMEXPORT +10 SELECTED WRITE OK objects=%lu path=%s")
-               : _T("GEMEXPORT +10 SELECTED WRITE FAILED objects=%lu path=%s"),
-            gemExportedObjects, gemPath.c_str()
-        );
-    }
-
-    // --------------------------------------------------------
-    // +10 SMALL DIAGNOSTIC GRID
-    // 5x5 points centred on the user's Object Query.
-    // Approx 50 m spacing N/S and E/W.
-    // This is intentionally a local proof, not a chart sweep.
-    // --------------------------------------------------------
-    if( g_gemHaveQuery ) {
-        struct GEMHit {
-            wxString feature;
-            int index;
-            double lat;
-            double lon;
-            bool hasPosition;
-            unsigned long hits;
-        };
-
-        std::map<wxString, GEMHit> gemHits;
-
-        const double metresPerDegLat = 111320.0;
-        const double pi = 3.14159265358979323846;
-        const double cosLat = cos(((double)g_gemQueryLat) * pi / 180.0);
-        const double metresPerDegLon =
-            (fabs(cosLat) > 0.01) ? (111320.0 * cosLat) : 111320.0;
-        const double spacingM = 50.0;
-
-        unsigned long sampleCount = 0;
-        g_gemInternalScan = true;
-
-        for( int row = -2; row <= 2; ++row ) {
-            for( int col = -2; col <= 2; ++col ) {
-                const float sampleLat =
-                    (float)(g_gemQueryLat + (row * spacingM / metresPerDegLat));
-                const float sampleLon =
-                    (float)(g_gemQueryLon + (col * spacingM / metresPerDegLon));
-
-                ListOfPI_S57Obj *sampleObjects =
-                    GetObjRuleListAtLatLon(
-                        sampleLat,
-                        sampleLon,
-                        g_gemQueryRadius,
-                        &g_gemQueryVP
-                    );
-
-                sampleCount++;
-
-                if( sampleObjects ) {
-                    for( ListOfPI_S57Obj::Node *gn = sampleObjects->GetFirst();
-                         gn; gn = gn->GetNext() ) {
-                        PI_S57Obj *go = gn->GetData();
-                        wxString feature(go->FeatureName, wxConvUTF8);
-                        wxString key = feature +
-                            wxString::Format(_T(":%d"), go->Index);
-
-                        std::map<wxString, GEMHit>::iterator it = gemHits.find(key);
-                        if( it == gemHits.end() ) {
-                            GEMHit hit;
-                            hit.feature = feature;
-                            hit.index = go->Index;
-                            hit.lat = 0.0;
-                            hit.lon = 0.0;
-                            hit.hasPosition = false;
-                            hit.hits = 1;
-
-                            if( go->npt == 1 ) {
-                                double olon, olat;
-                                fromSM_Plugin(
-                                    (go->x * go->x_rate) + go->x_origin,
-                                    (go->y * go->y_rate) + go->y_origin,
-                                    m_ref_lat, m_ref_lon,
-                                    &olat, &olon
-                                );
-                                if( olon > 180.0 ) olon -= 360.0;
-                                hit.lat = olat;
-                                hit.lon = olon;
-                                hit.hasPosition = true;
-                            }
-                            gemHits[key] = hit;
-                        }
-                        else {
-                            it->second.hits++;
-                        }
-                    }
-
-                    // GetObjRuleListAtLatLon() sets DeleteContents(true).
-                    delete sampleObjects;
-                }
-            }
-        }
-
-        g_gemInternalScan = false;
-
-        wxString corridor;
-        corridor << _T("{\n");
-        corridor << _T("  \"gem_format\": \"corridor-query-test-v1\",\n");
-        corridor << wxString::Format(
-            _T("  \"trigger\": {\"latitude\": %.8f, \"longitude\": %.8f},\n"),
-            (double)g_gemQueryLat, (double)g_gemQueryLon
-        );
-        corridor << wxString::Format(
-            _T("  \"grid\": {\"rows\": 5, \"columns\": 5, \"spacing_metres\": 50, \"sample_count\": %lu},\n"),
-            sampleCount
-        );
-        corridor << _T("  \"objects\": [\n");
-
-        bool firstHit = true;
-        for( std::map<wxString, GEMHit>::const_iterator it = gemHits.begin();
-             it != gemHits.end(); ++it ) {
-            const GEMHit &h = it->second;
-            if( !firstHit ) corridor << _T(",\n");
-
-            corridor << _T("    {\"feature\": \"")
-                     << GEMJsonEscape(h.feature)
-                     << _T("\", \"index\": ")
-                     << wxString::Format(_T("%d"), h.index);
-
-            if( h.hasPosition ) {
-                corridor << wxString::Format(
-                    _T(", \"latitude\": %.8f, \"longitude\": %.8f"),
-                    h.lat, h.lon
-                );
-            }
-
-            corridor << wxString::Format(
-                _T(", \"hits\": %lu}"),
-                h.hits
-            );
-            firstHit = false;
-        }
-
-        corridor << _T("\n  ],\n");
-        corridor << wxString::Format(
-            _T("  \"object_count\": %lu\n"),
-            (unsigned long)gemHits.size()
-        );
-        corridor << _T("}\n");
-
-        wxString corridorPath =
-            gemDir + wxFILE_SEP_PATH + _T("gem-corridor-test.json");
-
-        wxFFile corridorFile;
-        if( corridorFile.Open(corridorPath, _T("wb")) ) {
-            bool ok = corridorFile.Write(corridor, wxConvUTF8);
-            corridorFile.Close();
-            wxLogMessage(
-                ok ? _T("GEMCORRIDOR +10 WRITE OK objects=%lu samples=%lu path=%s")
-                   : _T("GEMCORRIDOR +10 WRITE FAILED objects=%lu samples=%lu path=%s"),
-                (unsigned long)gemHits.size(),
-                sampleCount,
-                corridorPath.c_str()
-            );
         }
     }
 
