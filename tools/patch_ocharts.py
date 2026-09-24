@@ -390,8 +390,8 @@ chart = replace_once(
     //   <OpenCPN user data>/gem-route-query.json
     //
     // Hard limits:
-    //   exactly 2 route points
-    //   maximum route length 1000 m
+    //   2 to 32 route points
+    //   maximum total route length 30000 m
     //   100 m along-track spacing
     //   cross-track offsets -50 / 0 / +50 m
     //
@@ -416,15 +416,15 @@ chart = replace_once(
                 routeInput.Close();
             }
 
-            // Deliberately tiny parser for the fixed diagnostic format.
-            // Extract the first four numeric values following "lat"/"lon".
-            double routeLat[2] = {0.0, 0.0};
-            double routeLon[2] = {0.0, 0.0};
+            // +16: bounded multi-waypoint parser. Accept 2..32
+            // {"lat":..., "lon":...} points from the GEM route file.
+            double routeLat[32] = {0.0};
+            double routeLon[32] = {0.0};
             int routePointCount = 0;
 
             size_t scanPos = 0;
 
-            while( routePointCount < 2 ) {
+            while( routePointCount < 32 ) {
                 int latPos = routeText.find(_T("\"lat\""), scanPos);
                 if( latPos == wxNOT_FOUND ) break;
 
@@ -460,39 +460,39 @@ chart = replace_once(
                 scanPos = lonColon + 1;
             }
 
-            if( routePointCount == 2 ) {
+            if( routePointCount >= 2 ) {
 
                 const double pi11 = 3.14159265358979323846;
-                const double meanLat =
-                    (routeLat[0] + routeLat[1]) * 0.5;
-
                 const double metresPerDegLat11 = 111320.0;
-                const double metresPerDegLon11 =
-                    111320.0 * cos(meanLat * pi11 / 180.0);
+                const double alongSpacing = 100.0;
+                const double crossOffsets[3] = {-50.0, 0.0, 50.0};
 
-                const double dNorth =
-                    (routeLat[1] - routeLat[0]) * metresPerDegLat11;
-                const double dEast =
-                    (routeLon[1] - routeLon[0]) * metresPerDegLon11;
+                // Validate and total every leg before scanning.
+                double routeLength = 0.0;
+                bool routeValid = true;
 
-                const double routeLength =
-                    sqrt((dNorth * dNorth) + (dEast * dEast));
+                for( int leg = 0; leg < routePointCount - 1; ++leg ) {
+                    const double meanLat =
+                        (routeLat[leg] + routeLat[leg + 1]) * 0.5;
+                    const double metresPerDegLon11 =
+                        111320.0 * cos(meanLat * pi11 / 180.0);
+                    const double dNorth =
+                        (routeLat[leg + 1] - routeLat[leg]) *
+                        metresPerDegLat11;
+                    const double dEast =
+                        (routeLon[leg + 1] - routeLon[leg]) *
+                        metresPerDegLon11;
+                    const double legLength =
+                        sqrt((dNorth * dNorth) + (dEast * dEast));
 
-                if( routeLength > 0.1 && routeLength <= 1000.0 ) {
+                    if( legLength <= 0.1 ) {
+                        routeValid = false;
+                        break;
+                    }
+                    routeLength += legLength;
+                }
 
-                    // Unit vector along route and perpendicular to route.
-                    const double uEast = dEast / routeLength;
-                    const double uNorth = dNorth / routeLength;
-                    const double pEast = -uNorth;
-                    const double pNorth = uEast;
-
-                    const double alongSpacing = 100.0;
-                    const double crossOffsets[3] = {-50.0, 0.0, 50.0};
-
-                    int alongSteps =
-                        (int)ceil(routeLength / alongSpacing);
-
-                    if( alongSteps < 1 ) alongSteps = 1;
+                if( routeValid && routeLength <= 30000.0 ) {
 
                     struct GEMRouteHit {
                         wxString feature;
@@ -529,138 +529,129 @@ chart = replace_once(
                     std::map<wxString, GEMCandidate> gemCandidates;
                     unsigned long routeSamples = 0;
 
+
+                    unsigned long routeSamples = 0;
+
                     g_gemInternalScan = true;
 
-                    // First pass: route corridor.
-                    for( int step = 0; step <= alongSteps; ++step ) {
+                    // +16 first pass: scan every route leg using the proven
+                    // +15 translated viewport. Shared waypoint endpoints are
+                    // harmless because routeHits deduplicates feature:index.
+                    for( int leg = 0; leg < routePointCount - 1; ++leg ) {
 
-                        double along =
-                            (step == alongSteps)
-                                ? routeLength
-                                : step * alongSpacing;
+                        const double meanLat =
+                            (routeLat[leg] + routeLat[leg + 1]) * 0.5;
+                        const double metresPerDegLon11 =
+                            111320.0 * cos(meanLat * pi11 / 180.0);
+                        const double dNorth =
+                            (routeLat[leg + 1] - routeLat[leg]) *
+                            metresPerDegLat11;
+                        const double dEast =
+                            (routeLon[leg + 1] - routeLon[leg]) *
+                            metresPerDegLon11;
+                        const double legLength =
+                            sqrt((dNorth * dNorth) + (dEast * dEast));
+                        const double uEast = dEast / legLength;
+                        const double uNorth = dNorth / legLength;
+                        const double pEast = -uNorth;
+                        const double pNorth = uEast;
 
-                        if( along > routeLength )
-                            along = routeLength;
+                        int alongSteps =
+                            (int)ceil(legLength / alongSpacing);
+                        if( alongSteps < 1 ) alongSteps = 1;
 
-                        double baseEast = uEast * along;
-                        double baseNorth = uNorth * along;
+                        for( int step = 0; step <= alongSteps; ++step ) {
+                            double along =
+                                (step == alongSteps)
+                                    ? legLength
+                                    : step * alongSpacing;
+                            if( along > legLength ) along = legLength;
 
-                        for( int ci = 0; ci < 3; ++ci ) {
+                            const double baseEast = uEast * along;
+                            const double baseNorth = uNorth * along;
 
-                            double sampleEast =
-                                baseEast + (pEast * crossOffsets[ci]);
+                            for( int ci = 0; ci < 3; ++ci ) {
+                                const double sampleEast =
+                                    baseEast + (pEast * crossOffsets[ci]);
+                                const double sampleNorth =
+                                    baseNorth + (pNorth * crossOffsets[ci]);
 
-                            double sampleNorth =
-                                baseNorth + (pNorth * crossOffsets[ci]);
+                                const float sampleLat =
+                                    (float)(routeLat[leg] +
+                                        sampleNorth / metresPerDegLat11);
+                                const float sampleLon =
+                                    (float)(routeLon[leg] +
+                                        sampleEast / metresPerDegLon11);
 
-                            float sampleLat =
-                                (float)(
-                                    routeLat[0] +
-                                    sampleNorth / metresPerDegLat11
-                                );
+                                PlugIn_ViewPort routeVP = g_gemQueryVP;
+                                const double routeDLat =
+                                    sampleLat - routeVP.clat;
+                                const double routeDLon =
+                                    sampleLon - routeVP.clon;
+                                routeVP.clat = sampleLat;
+                                routeVP.clon = sampleLon;
+                                routeVP.lat_min += routeDLat;
+                                routeVP.lat_max += routeDLat;
+                                routeVP.lon_min += routeDLon;
+                                routeVP.lon_max += routeDLon;
 
-                            float sampleLon =
-                                (float)(
-                                    routeLon[0] +
-                                    sampleEast / metresPerDegLon11
-                                );
+                                ListOfPI_S57Obj *routeObjects =
+                                    GetObjRuleListAtLatLon(
+                                        sampleLat, sampleLon,
+                                        g_gemQueryRadius, &routeVP);
 
-                            // +14: the hit-test viewport must be centred on
-                            // the coordinate being interrogated.  Reusing the
-                            // trigger viewport unchanged only works reliably
-                            // near the operator's original Object Query click.
-                            PlugIn_ViewPort routeVP = g_gemQueryVP;
+                                routeSamples++;
 
-                            // +15: move the viewport bounding box with its
-                            // centre.  +14 changed clat/clon only, leaving
-                            // lat_min/max and lon_min/max around the original
-                            // mouse-click viewport.  CreateCompatibleViewport()
-                            // uses these bounds in subsequent render checks.
-                            const double routeDLat = sampleLat - routeVP.clat;
-                            const double routeDLon = sampleLon - routeVP.clon;
-                            routeVP.clat = sampleLat;
-                            routeVP.clon = sampleLon;
-                            routeVP.lat_min += routeDLat;
-                            routeVP.lat_max += routeDLat;
-                            routeVP.lon_min += routeDLon;
-                            routeVP.lon_max += routeDLon;
+                                if( routeObjects ) {
+                                    for(
+                                        ListOfPI_S57Obj::Node *rn =
+                                            routeObjects->GetFirst();
+                                        rn;
+                                        rn = rn->GetNext()
+                                    ) {
+                                        PI_S57Obj *ro = rn->GetData();
+                                        wxString feature(
+                                            ro->FeatureName, wxConvUTF8);
+                                        wxString key =
+                                            feature + wxString::Format(
+                                                _T(":%d"), ro->Index);
 
-                            ListOfPI_S57Obj *routeObjects =
-                                GetObjRuleListAtLatLon(
-                                    sampleLat,
-                                    sampleLon,
-                                    g_gemQueryRadius,
-                                    &routeVP
-                                );
+                                        std::map<wxString, GEMRouteHit>::iterator
+                                            hitIt = routeHits.find(key);
 
-                            routeSamples++;
+                                        if( hitIt == routeHits.end() ) {
+                                            GEMRouteHit h;
+                                            h.feature = feature;
+                                            h.index = ro->Index;
+                                            h.lat = 0.0;
+                                            h.lon = 0.0;
+                                            h.hasPosition = false;
+                                            h.hits = 1;
+                                            h.enriched = false;
 
-                            if( routeObjects ) {
-
-                                for(
-                                    ListOfPI_S57Obj::Node *rn =
-                                        routeObjects->GetFirst();
-                                    rn;
-                                    rn = rn->GetNext()
-                                ) {
-                                    PI_S57Obj *ro = rn->GetData();
-
-                                    wxString feature(
-                                        ro->FeatureName,
-                                        wxConvUTF8
-                                    );
-
-                                    wxString key =
-                                        feature +
-                                        wxString::Format(
-                                            _T(":%d"),
-                                            ro->Index
-                                        );
-
-                                    std::map<wxString, GEMRouteHit>::iterator hitIt =
-                                        routeHits.find(key);
-
-                                    if( hitIt == routeHits.end() ) {
-
-                                        GEMRouteHit h;
-                                        h.feature = feature;
-                                        h.index = ro->Index;
-                                        h.lat = 0.0;
-                                        h.lon = 0.0;
-                                        h.hasPosition = false;
-                                        h.hits = 1;
-                                        h.enriched = false;
-
-                                        if( ro->npt == 1 ) {
-                                            double olon, olat;
-
-                                            fromSM_Plugin(
-                                                (ro->x * ro->x_rate) +
-                                                    ro->x_origin,
-                                                (ro->y * ro->y_rate) +
-                                                    ro->y_origin,
-                                                m_ref_lat,
-                                                m_ref_lon,
-                                                &olat,
-                                                &olon
-                                            );
-
-                                            if( olon > 180.0 )
-                                                olon -= 360.0;
-
-                                            h.lat = olat;
-                                            h.lon = olon;
-                                            h.hasPosition = true;
+                                            if( ro->npt == 1 ) {
+                                                double olon, olat;
+                                                fromSM_Plugin(
+                                                    (ro->x * ro->x_rate) +
+                                                        ro->x_origin,
+                                                    (ro->y * ro->y_rate) +
+                                                        ro->y_origin,
+                                                    m_ref_lat, m_ref_lon,
+                                                    &olat, &olon);
+                                                if( olon > 180.0 )
+                                                    olon -= 360.0;
+                                                h.lat = olat;
+                                                h.lon = olon;
+                                                h.hasPosition = true;
+                                            }
+                                            routeHits[key] = h;
                                         }
-
-                                        routeHits[key] = h;
+                                        else {
+                                            hitIt->second.hits++;
+                                        }
                                     }
-                                    else {
-                                        hitIt->second.hits++;
-                                    }
+                                    delete routeObjects;
                                 }
-
-                                delete routeObjects;
                             }
                         }
                     }
@@ -951,7 +942,7 @@ chart = replace_once(
 
                     routeJson << _T("{\n");
                     routeJson <<
-                        _T("  \"gem_format\": \"route-query-test-v1\",\n");
+                        _T("  \"gem_format\": \"route-query-test-v2\",\n");
 
                     routeJson << wxString::Format(
                         _T(
@@ -961,18 +952,23 @@ chart = replace_once(
                             "\"length_metres\": %.1f},\n"
                         ),
                         routeLat[0], routeLon[0],
-                        routeLat[1], routeLon[1],
+                        routeLat[routePointCount - 1],
+                        routeLon[routePointCount - 1],
                         routeLength
                     );
 
                     routeJson << wxString::Format(
                         _T(
                             "  \"sampling\": {"
+                            "\"waypoint_count\": %d, "
+                            "\"leg_count\": %d, "
                             "\"along_track_spacing_metres\": 100, "
                             "\"cross_track_offsets_metres\": [-50, 0, 50], "
                             "\"sample_count\": %lu, "
                             "\"enrichment_queries\": %lu},\n"
                         ),
+                        routePointCount,
+                        routePointCount - 1,
                         routeSamples,
                         enrichmentQueries
                     );
