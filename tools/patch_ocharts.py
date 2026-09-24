@@ -1063,11 +1063,11 @@ chart = replace_once(
                         wxLogMessage(
                             ok
                                 ? _T(
-                                    "GEMROUTE +18 WRITE OK "
+                                    "GEMROUTE +19 WRITE OK "
                                     "objects=%lu samples=%lu enrich=%lu path=%s"
                                 )
                                 : _T(
-                                    "GEMROUTE +18 WRITE FAILED "
+                                    "GEMROUTE +19 WRITE FAILED "
                                     "objects=%lu samples=%lu enrich=%lu path=%s"
                                 ),
                             (unsigned long)routeHits.size(),
@@ -1138,6 +1138,38 @@ chart = replace_once(
                     vpJson << wxString::Format(
                         _T("  \"skew_radians\": %.12g,\n"),
                         g_gemQueryVP.skew);
+
+                    // +19: identify the eSENCChart instance which is actually
+                    // servicing this Object Query.  GetChartExtent() and
+                    // GetNativeScale() are public eSENCChart accessors in the
+                    // pinned source.  m_FullPath is the inherited ChartBase
+                    // path already used by eSENCChart.cpp itself.
+                    ExtentPI gemChartExtent;
+                    bool gemHaveChartExtent = GetChartExtent(&gemChartExtent);
+                    vpJson << _T("  \"active_chart\": {\n");
+                    vpJson << wxString::Format(
+                        _T("    \"path\": \"%s\",\n"),
+                        GEMJsonEscape(m_FullPath).c_str());
+                    vpJson << wxString::Format(
+                        _T("    \"native_scale\": %d,\n"),
+                        GetNativeScale());
+                    vpJson << wxString::Format(
+                        _T("    \"coverage_entries\": %d,\n"),
+                        GetCOVREntries());
+                    vpJson << wxString::Format(
+                        _T("    \"no_coverage_entries\": %d,\n"),
+                        GetNoCOVREntries());
+                    if( gemHaveChartExtent ) {
+                        vpJson << wxString::Format(
+                            _T("    \"extent\": {\"south\": %.8f, \"north\": %.8f, "
+                               "\"west\": %.8f, \"east\": %.8f}\n"),
+                            gemChartExtent.SLAT, gemChartExtent.NLAT,
+                            gemChartExtent.WLON, gemChartExtent.ELON);
+                    } else {
+                        vpJson << _T("    \"extent\": null\n");
+                    }
+                    vpJson << _T("  },\n");
+
                     vpJson << wxString::Format(
                         _T("  \"route\": {\"length_metres\": %.1f, "
                            "\"waypoint_count\": %d, \"sample_count\": %lu},\n"),
@@ -1153,8 +1185,8 @@ chart = replace_once(
                         vpFile.Close();
                         wxLogMessage(
                             vpOK
-                                ? _T("GEMVIEW +18 WRITE OK path=%s")
-                                : _T("GEMVIEW +18 WRITE FAILED path=%s"),
+                                ? _T("GEMVIEW +19 WRITE OK path=%s")
+                                : _T("GEMVIEW +19 WRITE FAILED path=%s"),
                             vpPath.c_str());
                     }
 
@@ -1184,8 +1216,8 @@ chart = replace_once(
                         diagFile.Close();
                         wxLogMessage(
                             diagOK
-                                ? _T("GEMDIAG +18 WRITE OK path=%s")
-                                : _T("GEMDIAG +18 WRITE FAILED path=%s"),
+                                ? _T("GEMDIAG +19 WRITE OK path=%s")
+                                : _T("GEMDIAG +19 WRITE FAILED path=%s"),
                             diagPath.c_str());
                     }
 
@@ -1355,11 +1387,11 @@ chart = replace_once(
                         wxLogMessage(
                             candidatesOK
                                 ? _T(
-                                    "GEMCANDIDATES +18 WRITE OK "
+                                    "GEMCANDIDATES +19 WRITE OK "
                                     "candidates=%lu path=%s"
                                 )
                                 : _T(
-                                    "GEMCANDIDATES +18 WRITE FAILED "
+                                    "GEMCANDIDATES +19 WRITE FAILED "
                                     "candidates=%lu path=%s"
                                 ),
                             (unsigned long)gemCandidates.size(),
@@ -1372,7 +1404,7 @@ chart = replace_once(
                 else {
                     wxLogMessage(
                         _T(
-                            "GEMROUTE +18 SKIPPED: "
+                            "GEMROUTE +19 SKIPPED: "
                             "route length %.1f m outside diagnostic limit"
                         ),
                         routeLength
@@ -1382,7 +1414,7 @@ chart = replace_once(
             else {
                 wxLogMessage(
                     _T(
-                        "GEMROUTE +18 SKIPPED: "
+                        "GEMROUTE +19 SKIPPED: "
                         "gem-route-query.json must contain 2 to 32 "
                         "lat/lon route points"
                     )
