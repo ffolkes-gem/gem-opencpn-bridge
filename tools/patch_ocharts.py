@@ -1428,6 +1428,78 @@ chart = replace_once(
     "selected export and +10 diagnostic"
 )
 
+
+# +20 diagnostic only: register chart objects which OpenCPN itself creates.
+a = "eSENCChart::eSENCChart()\n{"
+b = '''static std::vector<eSENCChart *> g_gemLiveCharts;
+
+eSENCChart::eSENCChart()
+{
+    g_gemLiveCharts.push_back(this);'''
+if a not in chart:
+    raise RuntimeError("+20 constructor anchor not found")
+chart = chart.replace(a, b, 1)
+
+a = "eSENCChart::~eSENCChart()\n{\n"
+b = '''eSENCChart::~eSENCChart()
+{
+    for(std::vector<eSENCChart *>::iterator it = g_gemLiveCharts.begin();
+        it != g_gemLiveCharts.end(); ++it) {
+        if(*it == this) {
+            g_gemLiveCharts.erase(it);
+            break;
+        }
+    }
+
+'''
+if a not in chart:
+    raise RuntimeError("+20 destructor anchor not found")
+chart = chart.replace(a, b, 1)
+
+a = '''                    vpJson << wxString::Format(
+                        _T("  \\"route\\": {\\"length_metres\\": %.1f, "
+                           "\\"waypoint_count\\": %d, \\"sample_count\\": %lu},\\n"),
+                        routeLength, routePointCount, routeSamples);'''
+b = '''                    vpJson << _T("  \\"live_charts\\": [\\n");
+                    for(size_t gemChartIndex = 0; gemChartIndex < g_gemLiveCharts.size(); ++gemChartIndex) {
+                        eSENCChart *gemChart = g_gemLiveCharts[gemChartIndex];
+                        if(!gemChart) continue;
+                        ExtentPI gemExtent;
+                        bool gemExtentOK = gemChart->GetChartExtent(&gemExtent);
+                        vpJson << _T("    {");
+                        vpJson << wxString::Format(
+                            _T("\\"instance\\": \\"%p\\", \\"is_active\\": %s, "),
+                            (void *)gemChart, gemChart == this ? _T("true") : _T("false"));
+                        vpJson << wxString::Format(
+                            _T("\\"path\\": \\"%s\\", \\"native_scale\\": %d, "),
+                            GEMJsonEscape(gemChart->m_FullPath).c_str(), gemChart->GetNativeScale());
+                        vpJson << wxString::Format(
+                            _T("\\"coverage_entries\\": %d, \\"no_coverage_entries\\": %d, "),
+                            gemChart->GetCOVREntries(), gemChart->GetNoCOVREntries());
+                        if(gemExtentOK)
+                            vpJson << wxString::Format(
+                                _T("\\"extent\\": {\\"south\\": %.8f, \\"north\\": %.8f, \\"west\\": %.8f, \\"east\\": %.8f}"),
+                                gemExtent.SLAT, gemExtent.NLAT, gemExtent.WLON, gemExtent.ELON);
+                        else
+                            vpJson << _T("\\"extent\\": null");
+                        vpJson << _T("}");
+                        if(gemChartIndex + 1 < g_gemLiveCharts.size()) vpJson << _T(",");
+                        vpJson << _T("\\n");
+                    }
+                    vpJson << _T("  ],\\n");
+
+                    vpJson << wxString::Format(
+                        _T("  \\"route\\": {\\"length_metres\\": %.1f, "
+                           "\\"waypoint_count\\": %d, \\"sample_count\\": %lu},\\n"),
+                        routeLength, routePointCount, routeSamples);'''
+if a not in chart:
+    raise RuntimeError("+20 viewport route anchor not found")
+chart = chart.replace(a, b, 1)
+
+chart = chart.replace('\\"scanner_version\\": \\"GEM +18\\"', '\\"scanner_version\\": \\"GEM +20\\"')
+chart = chart.replace('\\"scanner_version\\": \\"GEM +19\\"', '\\"scanner_version\\": \\"GEM +20\\"')
+chart = chart.replace("GEMVIEW +19", "GEMVIEW +20")
+
 chart_path.write_text(chart, encoding="utf-8")
 
 print("Patched", chart_path)
