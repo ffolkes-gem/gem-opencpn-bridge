@@ -11,7 +11,7 @@ def replace_once(src, old, new, label):
 
 
 # ------------------------------------------------------------
-# GEM +12 cumulative
+# GEM +13 cumulative
 # Keeps +9 selected-object JSON intact.
 # Adds a deliberately small 5x5 diagnostic grid around the
 # user's normal Object Query click and writes a deduplicated
@@ -516,6 +516,8 @@ chart = replace_once(
                         wxString category;
                         wxString colour;
                         wxString information;
+                        wxString sourceDate;
+                        wxString sourceIndication;
                         wxArrayString componentFeatures;
                         wxArrayInt componentIndexes;
                         wxArrayString lightColours;
@@ -833,6 +835,10 @@ chart = replace_once(
                                                 candidate.colour = attrValue;
                                             else if( attrName == _T("INFORM") )
                                                 candidate.information = attrValue;
+                                            else if( attrName == _T("SORDAT") )
+                                                candidate.sourceDate = attrValue;
+                                            else if( attrName == _T("SORIND") )
+                                                candidate.sourceIndication = attrValue;
                                         }
 
                                         if( feature == _T("LIGHTS") ) {
@@ -1030,10 +1036,41 @@ chart = replace_once(
                         );
                     }
 
-                    // +12 normalized candidate output.
+                    // +13 presentation normalization.
+                    // Preserve raw decoded S-57 strings and derive clean text/code
+                    // separately.  Values without a trailing "(number)" remain text-only.
+                    struct GEMNormValue {
+                        wxString raw;
+                        wxString text;
+                        wxString code;
+                    };
+
+                    // Local lambda-style helper is avoided for compatibility with
+                    // the older Windows build toolchain used by this plugin.
+                    #define GEM_NORMALIZE_VALUE(INPUT, OUT)                           \
+                        OUT.raw = INPUT;                                               \
+                        OUT.text = INPUT;                                              \
+                        OUT.code = _T("");                                             \
+                        {                                                              \
+                            int gemClose = OUT.text.Find(')', true);                   \
+                            int gemOpen = OUT.text.Find('(', true);                    \
+                            if( gemOpen != wxNOT_FOUND &&                              \
+                                gemClose == (int)OUT.text.Length() - 1 &&              \
+                                gemOpen < gemClose ) {                                 \
+                                wxString gemMaybeCode =                                \
+                                    OUT.text.Mid(gemOpen + 1, gemClose - gemOpen - 1); \
+                                long gemCodeNumber = 0;                                \
+                                if( gemMaybeCode.ToLong(&gemCodeNumber) ) {            \
+                                    OUT.code = gemMaybeCode;                           \
+                                    OUT.text = OUT.text.Left(gemOpen);                 \
+                                    OUT.text.Trim(true).Trim(false);                   \
+                                }                                                      \
+                            }                                                          \
+                        }
+
                     wxString candidatesJson;
                     candidatesJson << _T("{\n");
-                    candidatesJson << _T("  \"gem_format\": \"route-navigation-candidates-v1\",\n");
+                    candidatesJson << _T("  \"gem_format\": \"route-navigation-candidates-v2\",\n");
                     candidatesJson << _T("  \"candidates\": [\n");
 
                     bool firstCandidate = true;
@@ -1064,18 +1101,58 @@ chart = replace_once(
                             _T("      \"position\": {\"latitude\": %.8f, \"longitude\": %.8f},\n"),
                             c.lat, c.lon
                         );
-                        candidatesJson << _T("      \"shape\": \"")
-                                       << GEMJsonEscape(c.shape)
-                                       << _T("\",\n");
-                        candidatesJson << _T("      \"category\": \"")
-                                       << GEMJsonEscape(c.category)
-                                       << _T("\",\n");
-                        candidatesJson << _T("      \"colour\": \"")
-                                       << GEMJsonEscape(c.colour)
-                                       << _T("\",\n");
+                        GEMNormValue normShape;
+                        GEMNormValue normCategory;
+                        GEMNormValue normColour;
+                        GEM_NORMALIZE_VALUE(c.shape, normShape);
+                        GEM_NORMALIZE_VALUE(c.category, normCategory);
+                        GEM_NORMALIZE_VALUE(c.colour, normColour);
+
+                        candidatesJson << _T("      \"shape\": {\"raw\": \"")
+                                       << GEMJsonEscape(normShape.raw)
+                                       << _T("\", \"text\": \"")
+                                       << GEMJsonEscape(normShape.text)
+                                       << _T("\", \"code\": \"")
+                                       << GEMJsonEscape(normShape.code)
+                                       << _T("\"},\n");
+                        candidatesJson << _T("      \"category\": {\"raw\": \"")
+                                       << GEMJsonEscape(normCategory.raw)
+                                       << _T("\", \"text\": \"")
+                                       << GEMJsonEscape(normCategory.text)
+                                       << _T("\", \"code\": \"")
+                                       << GEMJsonEscape(normCategory.code)
+                                       << _T("\"},\n");
+                        candidatesJson << _T("      \"colour\": {\"raw\": \"")
+                                       << GEMJsonEscape(normColour.raw)
+                                       << _T("\", \"text\": \"")
+                                       << GEMJsonEscape(normColour.text)
+                                       << _T("\", \"code\": \"")
+                                       << GEMJsonEscape(normColour.code)
+                                       << _T("\"},\n");
                         candidatesJson << _T("      \"information\": \"")
                                        << GEMJsonEscape(c.information)
                                        << _T("\",\n");
+                        candidatesJson << _T("      \"source\": {\"SORDAT\": \"")
+                                       << GEMJsonEscape(c.sourceDate)
+                                       << _T("\", \"SORIND\": \"")
+                                       << GEMJsonEscape(c.sourceIndication)
+                                       << _T("\"},\n");
+
+                        wxString displayLine = normCategory.text;
+                        if( !normColour.text.IsEmpty() ) {
+                            if( !displayLine.IsEmpty() ) displayLine << _T(" - ");
+                            displayLine << normColour.text;
+                        }
+                        if( !normShape.text.IsEmpty() ) {
+                            if( !displayLine.IsEmpty() ) displayLine << _T(" ");
+                            displayLine << normShape.text;
+                        }
+
+                        candidatesJson << _T("      \"display\": {\"name\": \"")
+                                       << GEMJsonEscape(c.name)
+                                       << _T("\", \"description\": \"")
+                                       << GEMJsonEscape(displayLine)
+                                       << _T("\"},\n");
 
                         candidatesJson << _T("      \"components\": [");
                         for( size_t ci = 0;
@@ -1098,14 +1175,31 @@ chart = replace_once(
                              li < c.lightCharacters.GetCount();
                              ++li ) {
                             if( li ) candidatesJson << _T(", ");
-                            candidatesJson << _T("{\"colour\": \"")
-                                           << GEMJsonEscape(c.lightColours[li])
-                                           << _T("\", \"character\": \"")
-                                           << GEMJsonEscape(c.lightCharacters[li])
-                                           << _T("\", \"group\": \"")
-                                           << GEMJsonEscape(c.lightGroups[li])
+                            GEMNormValue lightColour;
+                            GEMNormValue lightCharacter;
+                            GEMNormValue lightGroup;
+                            GEMNormValue lightPeriod;
+                            GEM_NORMALIZE_VALUE(c.lightColours[li], lightColour);
+                            GEM_NORMALIZE_VALUE(c.lightCharacters[li], lightCharacter);
+                            GEM_NORMALIZE_VALUE(c.lightGroups[li], lightGroup);
+                            GEM_NORMALIZE_VALUE(c.lightPeriods[li], lightPeriod);
+
+                            candidatesJson << _T("{\"colour\": {\"raw\": \"")
+                                           << GEMJsonEscape(lightColour.raw)
+                                           << _T("\", \"text\": \"")
+                                           << GEMJsonEscape(lightColour.text)
+                                           << _T("\", \"code\": \"")
+                                           << GEMJsonEscape(lightColour.code)
+                                           << _T("\"}, \"character\": {\"raw\": \"")
+                                           << GEMJsonEscape(lightCharacter.raw)
+                                           << _T("\", \"text\": \"")
+                                           << GEMJsonEscape(lightCharacter.text)
+                                           << _T("\", \"code\": \"")
+                                           << GEMJsonEscape(lightCharacter.code)
+                                           << _T("\"}, \"group\": \"")
+                                           << GEMJsonEscape(lightGroup.raw)
                                            << _T("\", \"period\": \"")
-                                           << GEMJsonEscape(c.lightPeriods[li])
+                                           << GEMJsonEscape(lightPeriod.raw)
                                            << _T("\"}");
                         }
                         candidatesJson << _T("]\n");
@@ -1124,7 +1218,7 @@ chart = replace_once(
                     wxString candidatesPath =
                         gemDir +
                         wxFILE_SEP_PATH +
-                        _T("gem-route-candidates.json");
+                        _T("gem-route-candidates-v2.json");
 
                     wxFFile candidatesFile;
 
@@ -1140,17 +1234,19 @@ chart = replace_once(
                         wxLogMessage(
                             candidatesOK
                                 ? _T(
-                                    "GEMCANDIDATES +12 WRITE OK "
+                                    "GEMCANDIDATES +13 WRITE OK "
                                     "candidates=%lu path=%s"
                                 )
                                 : _T(
-                                    "GEMCANDIDATES +12 WRITE FAILED "
+                                    "GEMCANDIDATES +13 WRITE FAILED "
                                     "candidates=%lu path=%s"
                                 ),
                             (unsigned long)gemCandidates.size(),
                             candidatesPath.c_str()
                         );
                     }
+
+                    #undef GEM_NORMALIZE_VALUE
                 }
                 else {
                     wxLogMessage(
@@ -1185,4 +1281,4 @@ print("Patched", chart_path)
 print("GEM +11: +9 selected-object export retained")
 print("GEM +11: +10 corridor diagnostic retained")
 print("GEM +11: bounded 2-point route diagnostic -> gem-route-test.json")
-print("GEM +12: normalized navigation candidates -> gem-route-candidates.json")
+print("GEM +13: normalized/raw navigation candidates -> gem-route-candidates-v2.json")
