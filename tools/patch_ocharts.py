@@ -971,6 +971,8 @@ chart = replace_once(
                                         }
                                     }
 
+                                }
+
                                 std::map<wxString, GEMRouteHit>::iterator hitIt =
                                     routeHits.find(key);
 
