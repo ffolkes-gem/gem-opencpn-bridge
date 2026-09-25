@@ -1828,8 +1828,8 @@ old = "                            c.lat, c.lon\n                        );\n   
 new = r'''                            c.lat, c.lon
                         );
                         candidatesJson << wxString::Format(
-                            _T("      \\"distance_to_route_metres\\": %.1f,\\n"), gemMinRouteDistance);
-                        candidatesJson << _T("      \\"relevance\\": \\"") << gemRelevance << _T("\\",\\n");
+                            _T("      \"distance_to_route_metres\": %.1f,\n"), gemMinRouteDistance);
+                        candidatesJson << _T("      \"relevance\": \"") << gemRelevance << _T("\",\n");
                         GEMNormValue normShape;'''
 if old not in chart: raise RuntimeError('+30 JSON distance anchor not found')
 chart = chart.replace(old, new, 1)
@@ -1865,7 +1865,7 @@ new = r'''                        GEM_NORMALIZE_VALUE(c.colour, normColour);
                             }
                         }
 
-                        candidatesJson << _T("      \\"shape\\": {\\"raw\\": \\"")'''
+                        candidatesJson << _T("      \"shape\": {\"raw\": \"")'''
 if old not in chart: raise RuntimeError('+30 colour normalization anchor not found')
 chart = chart.replace(old, new, 1)
 
