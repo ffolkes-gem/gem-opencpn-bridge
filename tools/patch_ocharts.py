@@ -1666,9 +1666,139 @@ for old, new in (
 ):
     chart = chart.replace(old, new)
 
+
+# +29: peer-chart coordinate correctness and cross-chart identity.
+# PI_S57Obj::m_lat/m_lon is already the chart object's geographic position.
+# Do not reconstruct peer-chart positions with `this->m_ref_lat/m_ref_lon`,
+# because `this` is the chart whose Object Query triggered the scan, not
+# necessarily the peer chart which supplied the object.
+chart = chart.replace(
+'''                                        wxString key =
+                                            feature + wxString::Format(
+                                                _T(\":%d\"), ro->Index);''',
+'''                                        wxString key =
+                                            feature + wxString::Format(_T(\":%d\"), ro->Index);
+                                        if( ro->npt == 1 )
+                                            key += wxString::Format(_T(\":%.7f:%.7f\"),
+                                                ro->m_lat, ro->m_lon);''', 1)
+
+chart = chart.replace(
+'''                                            if( ro->npt == 1 ) {
+                                                double olon, olat;
+                                                fromSM_Plugin(
+                                                    (ro->x * ro->x_rate) +
+                                                        ro->x_origin,
+                                                    (ro->y * ro->y_rate) +
+                                                        ro->y_origin,
+                                                    m_ref_lat, m_ref_lon,
+                                                    &olat, &olon);
+                                                if( olon > 180.0 )
+                                                    olon -= 360.0;
+                                                h.lat = olat;
+                                                h.lon = olon;
+                                                h.hasPosition = true;
+                                            }''',
+'''                                            if( ro->npt == 1 ) {
+                                                h.lat = ro->m_lat;
+                                                h.lon = ro->m_lon;
+                                                if( h.lon > 180.0 ) h.lon -= 360.0;
+                                                h.hasPosition = true;
+                                            }''', 1)
+
+chart = chart.replace(
+'''                                wxString key =
+                                    feature +
+                                    wxString::Format(
+                                        _T(\":%d\"),
+                                        eo->Index
+                                    );''',
+'''                                wxString key =
+                                    feature + wxString::Format(_T(\":%d\"), eo->Index);
+                                if( eo->npt == 1 )
+                                    key += wxString::Format(_T(\":%.7f:%.7f\"),
+                                        eo->m_lat, eo->m_lon);''', 1)
+
+chart = chart.replace(
+'''                                if( eo->npt == 1 ) {
+                                    fromSM_Plugin(
+                                        (eo->x * eo->x_rate) + eo->x_origin,
+                                        (eo->y * eo->y_rate) + eo->y_origin,
+                                        m_ref_lat,
+                                        m_ref_lon,
+                                        &componentLat,
+                                        &componentLon
+                                    );
+
+                                    if( componentLon > 180.0 )
+                                        componentLon -= 360.0;''',
+'''                                if( eo->npt == 1 ) {
+                                    componentLat = eo->m_lat;
+                                    componentLon = eo->m_lon;
+                                    if( componentLon > 180.0 ) componentLon -= 360.0;''', 1)
+
+chart = chart.replace(
+'''                                    if( eo->npt == 1 ) {
+                                        double olon, olat;
+
+                                        fromSM_Plugin(
+                                            (eo->x * eo->x_rate) +
+                                                eo->x_origin,
+                                            (eo->y * eo->y_rate) +
+                                                eo->y_origin,
+                                            m_ref_lat,
+                                            m_ref_lon,
+                                            &olat,
+                                            &olon
+                                        );
+
+                                        if( olon > 180.0 )
+                                            olon -= 360.0;
+
+                                        h.lat = olat;
+                                        h.lon = olon;
+                                        h.hasPosition = true;
+                                    }''',
+'''                                    if( eo->npt == 1 ) {
+                                        h.lat = eo->m_lat;
+                                        h.lon = eo->m_lon;
+                                        if( h.lon > 180.0 ) h.lon -= 360.0;
+                                        h.hasPosition = true;
+                                    }''', 1)
+
+chart = chart.replace(
+'''                                        double objectLon,objectLat;
+                                        fromSM_Plugin((co->x*co->x_rate)+co->x_origin,(co->y*co->y_rate)+co->y_origin,m_ref_lat,m_ref_lon,&objectLat,&objectLon);
+                                        if(objectLon>180.0) objectLon-=360.0;''',
+'''                                        double objectLat=co->m_lat, objectLon=co->m_lon;
+                                        if(objectLon>180.0) objectLon-=360.0;''', 1)
+
+chart = chart.replace(
+'''                                            wxString key=feature+wxString::Format(_T(\":%d\"),co->Index);''',
+'''                                            wxString key=feature+wxString::Format(_T(\":%d:%.7f:%.7f\"),co->Index,objectLat,objectLon);''', 1)
+
+# Make the runtime identity unmistakable.
+chart = chart.replace("GEMPROX +28", "GEMPROX +29")
+chart = chart.replace("GEMPOINT +28", "GEMPOINT +29")
+chart = chart.replace("GEMROUTE +28", "GEMROUTE +29")
+chart = chart.replace("GEMVIEW +28", "GEMVIEW +29")
+chart = chart.replace("GEMDIAG +28", "GEMDIAG +29")
+chart = chart.replace("GEMCANDIDATES +28", "GEMCANDIDATES +29")
+chart = chart.replace('"scanner_version": "GEM +28"', '"scanner_version": "GEM +29"')
+
+wx29 = '''    wxLogMessage(_T("GEMBUILD +29 peer-chart geographic coordinates active"));
+'''
+anchor29 = '''    wxLogMessage(
+        _T("GEMPROBE +10 ENTER objects=%lu"),'''
+if anchor29 in chart:
+    chart = chart.replace(anchor29, wx29 + anchor29, 1)
+else:
+    raise RuntimeError("+29 startup/query marker anchor not found")
+
 chart_path.write_text(chart, encoding="utf-8")
 
 print("Patched", chart_path)
+print("GEM +29: peer-chart PI_S57Obj geographic coordinates used directly")
+print("GEM +29: point-object identity qualified by geographic position")
 print("GEM +11: +9 selected-object export retained")
 print("GEM +11: +10 corridor diagnostic retained")
 print("GEM +18: bounded 2-32 point / 30 km route diagnostic -> gem-route-test.json")
