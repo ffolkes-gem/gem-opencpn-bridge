@@ -524,7 +524,16 @@ chart = replace_once(
                         wxArrayString lightCharacters;
                         wxArrayString lightGroups;
                         wxArrayString lightPeriods;
-                    };
+
+                        // +33B: preserve extended S-57 LIGHTS semantics.
+                        wxArrayString lightSector1;
+                        wxArrayString lightSector2;
+                        wxArrayString lightCategories;
+                        wxArrayString lightExhibitions;
+                        wxArrayString lightHeights;
+                        wxArrayString lightNominalRanges;
+                        wxArrayString lightNames;
+                        };
 
                     std::map<wxString, GEMCandidate> gemCandidates;
 
@@ -850,6 +859,13 @@ chart = replace_once(
                                     wxString lightCharacter;
                                     wxString lightGroup;
                                     wxString lightPeriod;
+                                    wxString lightSector1;
+                                    wxString lightSector2;
+                                    wxString lightCategory;
+                                    wxString lightExhibition;
+                                    wxString lightHeight;
+                                    wxString lightNominalRange;
+                                    wxString lightName;
 
                                     for( int ai = 0; ai < eo->n_attr; ++ai ) {
                                         wxString attrName(
@@ -896,23 +912,45 @@ chart = replace_once(
                                                 lightGroup = attrValue;
                                             else if( attrName == _T("SIGPER") )
                                                 lightPeriod = attrValue;
+                                            else if( attrName == _T("SECTR1") )
+                                                lightSector1 = attrValue;
+                                            else if( attrName == _T("SECTR2") )
+                                                lightSector2 = attrValue;
+                                            else if( attrName == _T("CATLIT") )
+                                                lightCategory = attrValue;
+                                            else if( attrName == _T("EXCLIT") )
+                                                lightExhibition = attrValue;
+                                            else if( attrName == _T("HEIGHT") )
+                                                lightHeight = attrValue;
+                                            else if( attrName == _T("VALNMR") )
+                                                lightNominalRange = attrValue;
+                                            else if( attrName == _T("OBJNAM") )
+                                                lightName = attrValue;
                                         }
                                     }
 
                                     if( feature == _T("LIGHTS") ) {
-                                        // +33A: overlapping chart cells may return
-                                        // the same physical LIGHTS object with
-                                        // different chart-local indexes. Deduplicate
-                                        // by its decoded navigational characteristics.
+                                        // +33B: deduplicate only genuinely identical
+                                        // LIGHTS records. Sector/category/exhibition
+                                        // differences must survive as separate lights.
                                         bool lightAlreadyAdded = false;
 
                                         for( size_t li = 0;
                                              li < candidate.lightCharacters.GetCount();
                                              ++li ) {
+
                                             if( candidate.lightColours[li] == lightColour &&
                                                 candidate.lightCharacters[li] == lightCharacter &&
                                                 candidate.lightGroups[li] == lightGroup &&
-                                                candidate.lightPeriods[li] == lightPeriod ) {
+                                                candidate.lightPeriods[li] == lightPeriod &&
+                                                candidate.lightSector1[li] == lightSector1 &&
+                                                candidate.lightSector2[li] == lightSector2 &&
+                                                candidate.lightCategories[li] == lightCategory &&
+                                                candidate.lightExhibitions[li] == lightExhibition &&
+                                                candidate.lightHeights[li] == lightHeight &&
+                                                candidate.lightNominalRanges[li] == lightNominalRange &&
+                                                candidate.lightNames[li] == lightName ) {
+
                                                 lightAlreadyAdded = true;
                                                 break;
                                             }
@@ -923,9 +961,15 @@ chart = replace_once(
                                             candidate.lightCharacters.Add(lightCharacter);
                                             candidate.lightGroups.Add(lightGroup);
                                             candidate.lightPeriods.Add(lightPeriod);
+                                            candidate.lightSector1.Add(lightSector1);
+                                            candidate.lightSector2.Add(lightSector2);
+                                            candidate.lightCategories.Add(lightCategory);
+                                            candidate.lightExhibitions.Add(lightExhibition);
+                                            candidate.lightHeights.Add(lightHeight);
+                                            candidate.lightNominalRanges.Add(lightNominalRange);
+                                            candidate.lightNames.Add(lightName);
                                         }
                                     }
-                                 }
 
                                 std::map<wxString, GEMRouteHit>::iterator hitIt =
                                     routeHits.find(key);
@@ -1397,37 +1441,91 @@ chart = replace_once(
                         candidatesJson << _T("],\n");
 
                         candidatesJson << _T("      \"lights\": [");
+
                         for( size_t li = 0;
                              li < c.lightCharacters.GetCount();
                              ++li ) {
-                            if( li ) candidatesJson << _T(", ");
+
+                            if( li )
+                                candidatesJson << _T(", ");
+
                             GEMNormValue lightColour;
                             GEMNormValue lightCharacter;
-                            GEMNormValue lightGroup;
-                            GEMNormValue lightPeriod;
-                            GEM_NORMALIZE_VALUE(c.lightColours[li], lightColour);
-                            GEM_NORMALIZE_VALUE(c.lightCharacters[li], lightCharacter);
-                            GEM_NORMALIZE_VALUE(c.lightGroups[li], lightGroup);
-                            GEM_NORMALIZE_VALUE(c.lightPeriods[li], lightPeriod);
+                            GEMNormValue lightCategory;
+                            GEMNormValue lightExhibition;
 
-                            candidatesJson << _T("{\"colour\": {\"raw\": \"")
-                                           << GEMJsonEscape(lightColour.raw)
-                                           << _T("\", \"text\": \"")
-                                           << GEMJsonEscape(lightColour.text)
-                                           << _T("\", \"code\": \"")
-                                           << GEMJsonEscape(lightColour.code)
-                                           << _T("\"}, \"character\": {\"raw\": \"")
-                                           << GEMJsonEscape(lightCharacter.raw)
-                                           << _T("\", \"text\": \"")
-                                           << GEMJsonEscape(lightCharacter.text)
-                                           << _T("\", \"code\": \"")
-                                           << GEMJsonEscape(lightCharacter.code)
-                                           << _T("\"}, \"group\": \"")
-                                           << GEMJsonEscape(lightGroup.raw)
-                                           << _T("\", \"period\": \"")
-                                           << GEMJsonEscape(lightPeriod.raw)
-                                           << _T("\"}");
+                            GEM_NORMALIZE_VALUE(
+                                c.lightColours[li],
+                                lightColour
+                            );
+
+                            GEM_NORMALIZE_VALUE(
+                                c.lightCharacters[li],
+                                lightCharacter
+                            );
+
+                            GEM_NORMALIZE_VALUE(
+                                c.lightCategories[li],
+                                lightCategory
+                            );
+
+                            GEM_NORMALIZE_VALUE(
+                                c.lightExhibitions[li],
+                                lightExhibition
+                            );
+
+                            candidatesJson
+                                << _T("{\"name\": \"")
+                                << GEMJsonEscape(c.lightNames[li])
+
+                                << _T("\", \"colour\": {\"raw\": \"")
+                                << GEMJsonEscape(lightColour.raw)
+                                << _T("\", \"text\": \"")
+                                << GEMJsonEscape(lightColour.text)
+                                << _T("\", \"code\": \"")
+                                << GEMJsonEscape(lightColour.code)
+
+                                << _T("\"}, \"character\": {\"raw\": \"")
+                                << GEMJsonEscape(lightCharacter.raw)
+                                << _T("\", \"text\": \"")
+                                << GEMJsonEscape(lightCharacter.text)
+                                << _T("\", \"code\": \"")
+                                << GEMJsonEscape(lightCharacter.code)
+
+                                << _T("\"}, \"group\": \"")
+                                << GEMJsonEscape(c.lightGroups[li])
+
+                                << _T("\", \"period\": \"")
+                                << GEMJsonEscape(c.lightPeriods[li])
+
+                                << _T("\", \"sector\": {\"start\": \"")
+                                << GEMJsonEscape(c.lightSector1[li])
+                                << _T("\", \"end\": \"")
+                                << GEMJsonEscape(c.lightSector2[li])
+
+                                << _T("\"}, \"category\": {\"raw\": \"")
+                                << GEMJsonEscape(lightCategory.raw)
+                                << _T("\", \"text\": \"")
+                                << GEMJsonEscape(lightCategory.text)
+                                << _T("\", \"code\": \"")
+                                << GEMJsonEscape(lightCategory.code)
+
+                                << _T("\"}, \"exhibition\": {\"raw\": \"")
+                                << GEMJsonEscape(lightExhibition.raw)
+                                << _T("\", \"text\": \"")
+                                << GEMJsonEscape(lightExhibition.text)
+                                << _T("\", \"code\": \"")
+                                << GEMJsonEscape(lightExhibition.code)
+
+                                << _T("\"}, \"height\": \"")
+                                << GEMJsonEscape(c.lightHeights[li])
+
+                                << _T("\", \"nominal_range\": \"")
+                                << GEMJsonEscape(c.lightNominalRanges[li])
+
+                                << _T("\"}");
                         }
+
                         candidatesJson << _T("]\n");
                         candidatesJson << _T("    }");
 
@@ -2207,6 +2305,18 @@ chart = chart.replace(
     'GEMBUILD +33A.1 overlap deduplication active',
     'GEMBUILD +33A.1 overlap deduplication and chart provenance active'
 )
+# +33B: preserve extended LIGHTS semantics, including sectors.
+chart = chart.replace('GEM +33A.1', 'GEM +33B')
+chart = chart.replace('GEMPROX +33A.1', 'GEMPROX +33B')
+chart = chart.replace('GEMPOINT +33A.1', 'GEMPOINT +33B')
+chart = chart.replace('GEMROUTE +33A.1', 'GEMROUTE +33B')
+chart = chart.replace('GEMVIEW +33A.1', 'GEMVIEW +33B')
+chart = chart.replace('GEMDIAG +33A.1', 'GEMDIAG +33B')
+chart = chart.replace('GEMCANDIDATES +33A.1', 'GEMCANDIDATES +33B')
+chart = chart.replace(
+    'GEMBUILD +33A.1 overlap deduplication and chart provenance active',
+    'GEMBUILD +33B extended LIGHTS semantics active'
+)
 chart_path.write_text(chart, encoding="utf-8")
 
 print("Patched", chart_path)
@@ -2214,5 +2324,5 @@ print("GEM +29: peer-chart PI_S57Obj geographic coordinates used directly")
 print("GEM +29: point-object identity qualified by geographic position")
 print("GEM +11: +9 selected-object export retained")
 print("GEM +11: +10 corridor diagnostic retained")
-print("GEM +33A.1: +33A scanner/deduplication retained; candidate chart provenance active")
+print("GEM +33B: +33A.1 acquisition/provenance retained; extended LIGHTS semantics active")
 print("GEM +18: normalized/raw navigation candidates -> gem-route-candidates-v2.json")
