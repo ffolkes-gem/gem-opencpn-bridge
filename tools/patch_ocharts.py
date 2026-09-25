@@ -1794,6 +1794,100 @@ if anchor29 in chart:
 else:
     raise RuntimeError("+29 startup/query marker anchor not found")
 
+# +30 production-shaped candidate output.
+chart = chart.replace('route-navigation-candidates-v2', 'route-navigation-candidates-v3')
+chart = chart.replace('gem-route-candidates-v2.json', 'gem-route-candidates-v3.json')
+
+old = '                        const GEMCandidate &c = cit->second;\\n\\n                        if( !firstCandidate )'
+new = r'''                        const GEMCandidate &c = cit->second;
+
+                        double gemMinRouteDistance = 1.0e30;
+                        for( int gemDL = 0; gemDL < routePointCount - 1; ++gemDL ) {
+                            const double gemMeanLat = ((routeLat[gemDL] + routeLat[gemDL + 1] + c.lat) / 3.0) * pi11 / 180.0;
+                            const double gemMLon = metresPerDegLat11 * cos(gemMeanLat);
+                            const double gemAX = (routeLon[gemDL] - c.lon) * gemMLon;
+                            const double gemAY = (routeLat[gemDL] - c.lat) * metresPerDegLat11;
+                            const double gemBX = (routeLon[gemDL + 1] - c.lon) * gemMLon;
+                            const double gemBY = (routeLat[gemDL + 1] - c.lat) * metresPerDegLat11;
+                            const double gemVX = gemBX - gemAX, gemVY = gemBY - gemAY;
+                            const double gemVV = gemVX * gemVX + gemVY * gemVY;
+                            double gemQ = gemVV > 0.000001 ? -((gemAX * gemVX) + (gemAY * gemVY)) / gemVV : 0.0;
+                            if( gemQ < 0.0 ) gemQ = 0.0;
+                            if( gemQ > 1.0 ) gemQ = 1.0;
+                            const double gemPX = gemAX + gemQ * gemVX, gemPY = gemAY + gemQ * gemVY;
+                            const double gemD = sqrt(gemPX * gemPX + gemPY * gemPY);
+                            if( gemD < gemMinRouteDistance ) gemMinRouteDistance = gemD;
+                        }
+                        wxString gemRelevance = gemMinRouteDistance <= 100.0 ? _T("on_route") : _T("nearby");
+
+                        if( !firstCandidate )'''
+if old not in chart: raise RuntimeError('+30 distance anchor not found')
+chart = chart.replace(old, new, 1)
+
+old = '                            c.lat, c.lon\\n                        );\\n                        GEMNormValue normShape;'
+new = r'''                            c.lat, c.lon
+                        );
+                        candidatesJson << wxString::Format(
+                            _T("      \\"distance_to_route_metres\\": %.1f,\\n"), gemMinRouteDistance);
+                        candidatesJson << _T("      \\"relevance\\": \\"") << gemRelevance << _T("\\",\\n");
+                        GEMNormValue normShape;'''
+if old not in chart: raise RuntimeError('+30 JSON distance anchor not found')
+chart = chart.replace(old, new, 1)
+
+# Clean the malformed text/code split returned for multi-valued enumerations.
+old = '                        GEM_NORMALIZE_VALUE(c.colour, normColour);\\n\\n                        candidatesJson << _T("      \\"shape\\": {\\"raw\\": \\"")'
+new = r'''                        GEM_NORMALIZE_VALUE(c.colour, normColour);
+
+                        // +30: oeSENC multi-value decoded enums can arrive as
+                        // "black, yellow2,6". Split the trailing numeric CSV
+                        // from presentation text while preserving raw unchanged.
+                        if( normColour.code.IsEmpty() && !normColour.text.IsEmpty() ) {
+                            int gemDigit = wxNOT_FOUND;
+                            for( size_t gemI = 0; gemI < normColour.text.Length(); ++gemI ) {
+                                wxChar gemC = normColour.text[gemI];
+                                if( gemC >= '0' && gemC <= '9' ) { gemDigit = (int)gemI; break; }
+                            }
+                            if( gemDigit != wxNOT_FOUND ) {
+                                wxString gemSuffix = normColour.text.Mid(gemDigit);
+                                bool gemNumericCsv = true;
+                                for( size_t gemI = 0; gemI < gemSuffix.Length(); ++gemI ) {
+                                    wxChar gemC = gemSuffix[gemI];
+                                    if( !((gemC >= '0' && gemC <= '9') || gemC == ',' || gemC == ' ') ) {
+                                        gemNumericCsv = false; break;
+                                    }
+                                }
+                                if( gemNumericCsv ) {
+                                    normColour.code = gemSuffix;
+                                    normColour.code.Trim(true).Trim(false);
+                                    normColour.text = normColour.text.Left(gemDigit);
+                                    normColour.text.Trim(true).Trim(false);
+                                }
+                            }
+                        }
+
+                        candidatesJson << _T("      \\"shape\\": {\\"raw\\": \\"")'''
+if old not in chart: raise RuntimeError('+30 colour normalization anchor not found')
+chart = chart.replace(old, new, 1)
+
+# Add v3 metadata.
+old = '                    candidatesJson << _T("  \\"gem_format\\": \\"route-navigation-candidates-v3\\",\\n");\\n                    candidatesJson << _T("  \\"candidates\\": [\\n");'
+new = r'''                    candidatesJson << _T("  \\"gem_format\\": \\"route-navigation-candidates-v3\\",\\n");
+                    candidatesJson << _T("  \\"scanner_version\\": \\"GEM +30\\",\\n");
+                    candidatesJson << wxString::Format(_T("  \\"route_length_metres\\": %.1f,\\n"), routeLength);
+                    candidatesJson << _T("  \\"relevance_thresholds_metres\\": {\\"on_route\\": 100, \\"nearby\\": 1000},\\n");
+                    candidatesJson << _T("  \\"candidates\\": [\\n");'''
+if old not in chart: raise RuntimeError('+30 header anchor not found')
+chart = chart.replace(old, new, 1)
+
+chart = chart.replace('GEMPROX +29', 'GEMPROX +30')
+chart = chart.replace('GEMPOINT +29', 'GEMPOINT +30')
+chart = chart.replace('GEMROUTE +29', 'GEMROUTE +30')
+chart = chart.replace('GEMVIEW +29', 'GEMVIEW +30')
+chart = chart.replace('GEMDIAG +29', 'GEMDIAG +30')
+chart = chart.replace('GEMCANDIDATES +29', 'GEMCANDIDATES +30')
+chart = chart.replace('GEM +29', 'GEM +30')
+chart = chart.replace('GEMBUILD +30 peer-chart geographic coordinates active', 'GEMBUILD +30 production candidate output active')
+
 chart_path.write_text(chart, encoding="utf-8")
 
 print("Patched", chart_path)
