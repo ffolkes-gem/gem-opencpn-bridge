@@ -1798,7 +1798,7 @@ else:
 chart = chart.replace('route-navigation-candidates-v2', 'route-navigation-candidates-v3')
 chart = chart.replace('gem-route-candidates-v2.json', 'gem-route-candidates-v3.json')
 
-old = '                        const GEMCandidate &c = cit->second;\\n\\n                        if( !firstCandidate )'
+old = "                        const GEMCandidate &c = cit->second;\n\n                        if( !firstCandidate )"
 new = r'''                        const GEMCandidate &c = cit->second;
 
                         double gemMinRouteDistance = 1.0e30;
@@ -1824,7 +1824,7 @@ new = r'''                        const GEMCandidate &c = cit->second;
 if old not in chart: raise RuntimeError('+30 distance anchor not found')
 chart = chart.replace(old, new, 1)
 
-old = '                            c.lat, c.lon\\n                        );\\n                        GEMNormValue normShape;'
+old = "                            c.lat, c.lon\n                        );\n                        GEMNormValue normShape;"
 new = r'''                            c.lat, c.lon
                         );
                         candidatesJson << wxString::Format(
@@ -1835,7 +1835,7 @@ if old not in chart: raise RuntimeError('+30 JSON distance anchor not found')
 chart = chart.replace(old, new, 1)
 
 # Clean the malformed text/code split returned for multi-valued enumerations.
-old = '                        GEM_NORMALIZE_VALUE(c.colour, normColour);\\n\\n                        candidatesJson << _T("      \\"shape\\": {\\"raw\\": \\"")'
+old = '''                        GEM_NORMALIZE_VALUE(c.colour, normColour);\n\n                        candidatesJson << _T(\"      \\\"shape\\\": {\\\"raw\\\": \\\"\")'''
 new = r'''                        GEM_NORMALIZE_VALUE(c.colour, normColour);
 
                         // +30: oeSENC multi-value decoded enums can arrive as
