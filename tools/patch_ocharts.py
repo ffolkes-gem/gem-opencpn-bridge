@@ -1870,12 +1870,13 @@ if old not in chart: raise RuntimeError('+30 colour normalization anchor not fou
 chart = chart.replace(old, new, 1)
 
 # Add v3 metadata.
-old = '                    candidatesJson << _T("  \\"gem_format\\": \\"route-navigation-candidates-v3\\",\\n");\\n                    candidatesJson << _T("  \\"candidates\\": [\\n");'
-new = r'''                    candidatesJson << _T("  \\"gem_format\\": \\"route-navigation-candidates-v3\\",\\n");
-                    candidatesJson << _T("  \\"scanner_version\\": \\"GEM +30\\",\\n");
-                    candidatesJson << wxString::Format(_T("  \\"route_length_metres\\": %.1f,\\n"), routeLength);
-                    candidatesJson << _T("  \\"relevance_thresholds_metres\\": {\\"on_route\\": 100, \\"nearby\\": 1000},\\n");
-                    candidatesJson << _T("  \\"candidates\\": [\\n");'''
+old = r'''                    candidatesJson << _T("  \"gem_format\": \"route-navigation-candidates-v3\",\n");
+                    candidatesJson << _T("  \"candidates\": [\n");'''
+new = r'''                    candidatesJson << _T("  \"gem_format\": \"route-navigation-candidates-v3\",\n");
+                    candidatesJson << _T("  \"scanner_version\": \"GEM +30\",\n");
+                    candidatesJson << wxString::Format(_T("  \"route_length_metres\": %.1f,\n"), routeLength);
+                    candidatesJson << _T("  \"relevance_thresholds_metres\": {\"on_route\": 100, \"nearby\": 1000},\n");
+                    candidatesJson << _T("  \"candidates\": [\n");'''
 if old not in chart: raise RuntimeError('+30 header anchor not found')
 chart = chart.replace(old, new, 1)
 
