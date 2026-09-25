@@ -803,15 +803,18 @@ chart = replace_once(
                                         dLat < 0.000002 &&
                                         dLon < 0.000002;
                                 }
-
+                                  
                                 if( samePosition ) {
+                                    // +33A: chart-local object indexes are not stable
+                                    // across overlapping ENC cells. At this exact
+                                    // physical position, treat the same S-57 feature
+                                    // class as one logical component.
                                     bool componentAlreadyAdded = false;
 
                                     for( size_t ci = 0;
                                          ci < candidate.componentFeatures.GetCount();
                                          ++ci ) {
-                                        if( candidate.componentFeatures[ci] == feature &&
-                                            candidate.componentIndexes[ci] == eo->Index ) {
+                                        if( candidate.componentFeatures[ci] == feature ) {
                                             componentAlreadyAdded = true;
                                             break;
                                         }
@@ -892,12 +895,31 @@ chart = replace_once(
                                     }
 
                                     if( feature == _T("LIGHTS") ) {
-                                        candidate.lightColours.Add(lightColour);
-                                        candidate.lightCharacters.Add(lightCharacter);
-                                        candidate.lightGroups.Add(lightGroup);
-                                        candidate.lightPeriods.Add(lightPeriod);
-                                    }
-                                }
+                                        // +33A: overlapping chart cells may return
+                                        // the same physical LIGHTS object with
+                                        // different chart-local indexes. Deduplicate
+                                        // by its decoded navigational characteristics.
+                                        bool lightAlreadyAdded = false;
+
+                                        for( size_t li = 0;
+                                             li < candidate.lightCharacters.GetCount();
+                                             ++li ) {
+                                            if( candidate.lightColours[li] == lightColour &&
+                                                candidate.lightCharacters[li] == lightCharacter &&
+                                                candidate.lightGroups[li] == lightGroup &&
+                                                candidate.lightPeriods[li] == lightPeriod ) {
+                                                lightAlreadyAdded = true;
+                                                break;
+                                            }
+                                        }
+
+                                        if( !lightAlreadyAdded ) {
+                                            candidate.lightColours.Add(lightColour);
+                                            candidate.lightCharacters.Add(lightCharacter);
+                                            candidate.lightGroups.Add(lightGroup);
+                                            candidate.lightPeriods.Add(lightPeriod);
+                                        }                                 
+                                 }
 
                                 std::map<wxString, GEMRouteHit>::iterator hitIt =
                                     routeHits.find(key);
@@ -2011,157 +2033,22 @@ for a,b in [('GEMPROX +30','GEMPROX +32'),('GEMPOINT +30','GEMPOINT +32'),
             ('GEMDIAG +30','GEMDIAG +32'),('GEMCANDIDATES +30','GEMCANDIDATES +32'),
             ('GEM +30','GEM +32')]:
     chart = chart.replace(a,b)
+
+# +33A identity: +32 acquisition is unchanged; only candidate assembly
+# deduplicates overlapping physical components and identical lights.
+chart = chart.replace('GEM +32', 'GEM +33A')
+chart = chart.replace('GEMPROX +32', 'GEMPROX +33A')
+chart = chart.replace('GEMPOINT +32', 'GEMPOINT +33A')
+chart = chart.replace('GEMROUTE +32', 'GEMROUTE +33A')
+chart = chart.replace('GEMVIEW +32', 'GEMVIEW +33A')
+chart = chart.replace('GEMDIAG +32', 'GEMDIAG +33A')
+chart = chart.replace('GEMCANDIDATES +32', 'GEMCANDIDATES +33A')
+chart = chart.replace(
+    'GEMBUILD +33A full GPX route scalability test active',
+    'GEMBUILD +33A overlap deduplication active'
+)
 chart = chart.replace('GEMBUILD +32 production candidate output active',
                       'GEMBUILD +32 full GPX route scalability test active')
-
-# +33A: output-quality cleanup only. Preserve +32 spatial acquisition unchanged.
-old33 = '''                        wxArrayString lightPeriods;
-                    };'''
-new33 = '''                        wxArrayString lightPeriods;
-                        wxArrayString chartSources;
-                    };'''
-if old33 not in chart: raise RuntimeError('+33A candidate model anchor not found')
-chart = chart.replace(old33, new33, 1)
-
-old33 = '''                    unsigned long enrichmentQueries = 0;
-
-                    for('''
-new33 = '''                    unsigned long enrichmentQueries = 0;
-                    std::map<wxString, wxArrayString> gemCandidateChartSources;
-
-                    for('''
-if old33 not in chart: raise RuntimeError('+33A provenance map anchor not found')
-chart = chart.replace(old33, new33, 1)
-
-old33 = '''                            if(gemObjects) {
-                                for(ListOfPI_S57Obj::Node *gn = gemObjects->GetFirst();
-                                    gn; gn = gn->GetNext()) {
-                                    PI_S57Obj *go = gn->GetData();
-                                    PI_S57Obj *copy = new PI_S57Obj;
-                                    *copy = *go;
-                                    exactObjects->Append(copy);
-                                }
-                                gemObjects->DeleteContents(false);
-                                delete gemObjects;
-                            }'''
-new33 = r'''                            if(gemObjects) {
-                                bool gemChartContributedHere = false;
-                                for(ListOfPI_S57Obj::Node *gn = gemObjects->GetFirst();
-                                    gn; gn = gn->GetNext()) {
-                                    PI_S57Obj *go = gn->GetData();
-                                    if(go && go->npt == 1) {
-                                        double gemPLat = go->m_lat;
-                                        double gemPLon = go->m_lon;
-                                        if(gemPLon > 180.0) gemPLon -= 360.0;
-                                        if(fabs(gemPLat - enrichPoints[ei].lat) < 0.000002 &&
-                                           fabs(gemPLon - enrichPoints[ei].lon) < 0.000002)
-                                            gemChartContributedHere = true;
-                                    }
-                                    PI_S57Obj *copy = new PI_S57Obj;
-                                    *copy = *go;
-                                    exactObjects->Append(copy);
-                                }
-                                if(gemChartContributedHere) {
-                                    wxString gemProvKey = wxString::Format(_T("%.7f:%.7f"),
-                                        enrichPoints[ei].lat, enrichPoints[ei].lon);
-                                    wxFileName gemChartFileName(gemChart->m_FullPath);
-                                    wxString gemSource = gemChartFileName.GetFullName() +
-                                        wxString::Format(_T("|%d"), gemChart->GetNativeScale());
-                                    wxArrayString &gemSources = gemCandidateChartSources[gemProvKey];
-                                    if(gemSources.Index(gemSource) == wxNOT_FOUND)
-                                        gemSources.Add(gemSource);
-                                }
-                                gemObjects->DeleteContents(false);
-                                delete gemObjects;
-                            }'''
-first = chart.find(old33)
-if first < 0: raise RuntimeError('+33A first aggregation anchor not found')
-second = chart.find(old33, first + 1)
-if second < 0: raise RuntimeError('+33A enrichment aggregation anchor not found')
-chart = chart[:second] + chart[second:].replace(old33, new33, 1)
-
-old33 = '''                            if( !candidate.primaryFeature.IsEmpty() )
-                                gemCandidates[candidateKey] = candidate;'''
-new33 = '''                            if( !candidate.primaryFeature.IsEmpty() ) {
-                                std::map<wxString, wxArrayString>::const_iterator gemSrcIt =
-                                    gemCandidateChartSources.find(candidateKey);
-                                if( gemSrcIt != gemCandidateChartSources.end() )
-                                    candidate.chartSources = gemSrcIt->second;
-                                gemCandidates[candidateKey] = candidate;
-                            }'''
-if old33 not in chart: raise RuntimeError('+33A candidate provenance attach anchor not found')
-chart = chart.replace(old33, new33, 1)
-
-old33 = '''                                        if( candidate.componentFeatures[ci] == feature &&
-                                            candidate.componentIndexes[ci] == eo->Index ) {'''
-new33 = '''                                        if( candidate.componentFeatures[ci] == feature ) {'''
-if old33 not in chart: raise RuntimeError('+33A component dedupe anchor not found')
-chart = chart.replace(old33, new33, 1)
-
-old33 = '''                                    if( feature == _T("LIGHTS") ) {
-                                        candidate.lightColours.Add(lightColour);
-                                        candidate.lightCharacters.Add(lightCharacter);
-                                        candidate.lightGroups.Add(lightGroup);
-                                        candidate.lightPeriods.Add(lightPeriod);
-                                    }'''
-new33 = r'''                                    if( feature == _T("LIGHTS") ) {
-                                        bool gemLightAlreadyAdded = false;
-                                        for( size_t gemLI = 0; gemLI < candidate.lightCharacters.GetCount(); ++gemLI ) {
-                                            if( candidate.lightColours[gemLI] == lightColour &&
-                                                candidate.lightCharacters[gemLI] == lightCharacter &&
-                                                candidate.lightGroups[gemLI] == lightGroup &&
-                                                candidate.lightPeriods[gemLI] == lightPeriod ) {
-                                                gemLightAlreadyAdded = true;
-                                                break;
-                                            }
-                                        }
-                                        if( !gemLightAlreadyAdded ) {
-                                            candidate.lightColours.Add(lightColour);
-                                            candidate.lightCharacters.Add(lightCharacter);
-                                            candidate.lightGroups.Add(lightGroup);
-                                            candidate.lightPeriods.Add(lightPeriod);
-                                        }
-                                    }'''
-if old33 not in chart: raise RuntimeError('+33A light dedupe anchor not found')
-chart = chart.replace(old33, new33, 1)
-
-old33 = '''                                       << GEMJsonEscape(c.sourceIndication)
-                                       << _T("\"},\n");
-
-                        wxString displayLine = normCategory.text;'''
-new33 = r'''                                       << GEMJsonEscape(c.sourceIndication)
-                                       << _T("\"},\n");
-                        candidatesJson << _T("      \"chart_sources\": [");
-                        for( size_t gemSI = 0; gemSI < c.chartSources.GetCount(); ++gemSI ) {
-                            if( gemSI ) candidatesJson << _T(", ");
-                            wxString gemSource = c.chartSources[gemSI];
-                            int gemSep = gemSource.Find('|', true);
-                            wxString gemChartName = gemSep == wxNOT_FOUND ? gemSource : gemSource.Left(gemSep);
-                            wxString gemScale = gemSep == wxNOT_FOUND ? _T("") : gemSource.Mid(gemSep + 1);
-                            candidatesJson << _T("{\"chart\": \"") << GEMJsonEscape(gemChartName)
-                                           << _T("\", \"native_scale\": ");
-                            long gemScaleValue = 0;
-                            if( gemScale.ToLong(&gemScaleValue) )
-                                candidatesJson << wxString::Format(_T("%ld"), gemScaleValue);
-                            else
-                                candidatesJson << _T("null");
-                            candidatesJson << _T("}");
-                        }
-                        candidatesJson << _T("],\n");
-
-                        wxString displayLine = normCategory.text;'''
-if old33 not in chart: raise RuntimeError('+33A provenance JSON anchor not found')
-chart = chart.replace(old33, new33, 1)
-
-for a,b in [('GEMPROX +32','GEMPROX +33A'),('GEMPOINT +32','GEMPOINT +33A'),
-            ('GEMROUTE +32','GEMROUTE +33A'),('GEMVIEW +32','GEMVIEW +33A'),
-            ('GEMDIAG +32','GEMDIAG +33A'),('GEMCANDIDATES +32','GEMCANDIDATES +33A'),
-            ('GEMGPX +32','GEMGPX +33A')]:
-    chart = chart.replace(a,b)
-chart = chart.replace('"scanner_version": "GEM +32"', '"scanner_version": "GEM +33A"')
-chart = chart.replace('GEMBUILD +32 full GPX route scalability test active',
-                      'GEMBUILD +33A dedupe and chart provenance active')
-
 
 chart_path.write_text(chart, encoding="utf-8")
 
@@ -2170,6 +2057,5 @@ print("GEM +29: peer-chart PI_S57Obj geographic coordinates used directly")
 print("GEM +29: point-object identity qualified by geographic position")
 print("GEM +11: +9 selected-object export retained")
 print("GEM +11: +10 corridor diagnostic retained")
-print("GEM +32 acquisition retained: standard gem-route.gpx, 512 points, 100 km guard")
-print("GEM +33A: logical component/light dedupe plus contributing chart provenance")
+print("GEM +33A: +32 full-GPX scanner retained; overlapping component/light deduplication active")
 print("GEM +18: normalized/raw navigation candidates -> gem-route-candidates-v2.json")
