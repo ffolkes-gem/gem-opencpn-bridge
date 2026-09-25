@@ -918,7 +918,8 @@ chart = replace_once(
                                             candidate.lightCharacters.Add(lightCharacter);
                                             candidate.lightGroups.Add(lightGroup);
                                             candidate.lightPeriods.Add(lightPeriod);
-                                        }                                 
+                                        }
+                                    }
                                  }
 
                                 std::map<wxString, GEMRouteHit>::iterator hitIt =
