@@ -527,6 +527,11 @@ chart = replace_once(
                     };
 
                     std::map<wxString, GEMCandidate> gemCandidates;
+
+                    // +33A.1: candidate coordinate -> charts which actually
+                    // supplied an object at that exact physical position.
+                    std::map<wxString, wxArrayString> gemCandidateChartSources;
+
                     unsigned long routeSamples = 0;
 
                     // +17 diagnostic: count returned objects in five route bands.
