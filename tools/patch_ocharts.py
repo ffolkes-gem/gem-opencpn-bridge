@@ -1518,6 +1518,51 @@ chart = chart.replace('\"scanner_version\": \"GEM +20\"',
                       '\"scanner_version\": \"GEM +21\"')
 chart = chart.replace("GEMVIEW +20", "GEMVIEW +21")
 
+
+# +22 diagnostic: log implausibly distant point returns per chart before changing viewport mechanics.
+old22 = """                                    if(gemObjects) {
+                                        for(ListOfPI_S57Obj::Node *gn = gemObjects->GetFirst();
+                                            gn; gn = gn->GetNext()) {
+                                            PI_S57Obj *go = gn->GetData();
+                                            PI_S57Obj *copy = new PI_S57Obj;
+                                            *copy = *go;
+                                            routeObjects->Append(copy);
+                                        }
+                                        gemObjects->DeleteContents(false);
+                                        delete gemObjects;
+                                    }"""
+new22 = """                                    if(gemObjects) {
+                                        for(ListOfPI_S57Obj::Node *gn = gemObjects->GetFirst();
+                                            gn; gn = gn->GetNext()) {
+                                            PI_S57Obj *go = gn->GetData();
+                                            if(go && go->Primitive_type == GEO_POINT) {
+                                                const double gemLatScale = 111320.0;
+                                                const double gemLonScale = 111320.0 * cos(sampleLat * M_PI / 180.0);
+                                                const double gemDN = (go->m_lat - sampleLat) * gemLatScale;
+                                                const double gemDE = (go->m_lon - sampleLon) * gemLonScale;
+                                                const double gemDist = sqrt(gemDN * gemDN + gemDE * gemDE);
+                                                if(gemDist > 500.0) {
+                                                    wxLogMessage(_T("GEMPOINT +22 FAR chart=%s feature=%s index=%d sample=%.7f,%.7f object=%.7f,%.7f distance=%.1fm"),
+                                                        gemChart->m_FullPath.c_str(),
+                                                        wxString(go->FeatureName, wxConvUTF8).c_str(), go->Index,
+                                                        sampleLat, sampleLon, go->m_lat, go->m_lon, gemDist);
+                                                }
+                                            }
+                                            PI_S57Obj *copy = new PI_S57Obj;
+                                            *copy = *go;
+                                            routeObjects->Append(copy);
+                                        }
+                                        gemObjects->DeleteContents(false);
+                                        delete gemObjects;
+                                    }"""
+if old22 not in chart:
+    raise RuntimeError("+22 corridor object-loop anchor not found")
+chart = chart.replace(old22, new22, 1)
+for oldver in ("GEM +18", "GEM +19", "GEM +20", "GEM +21"):
+    chart = chart.replace(oldver, "GEM +22")
+for oldver in ("GEMVIEW +18", "GEMVIEW +19", "GEMVIEW +20", "GEMVIEW +21"):
+    chart = chart.replace(oldver, "GEMVIEW +22")
+
 chart_path.write_text(chart, encoding="utf-8")
 
 print("Patched", chart_path)
