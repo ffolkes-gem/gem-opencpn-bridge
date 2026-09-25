@@ -1319,7 +1319,50 @@ chart = replace_once(
                                        << GEMJsonEscape(c.sourceDate)
                                        << _T("\", \"SORIND\": \"")
                                        << GEMJsonEscape(c.sourceIndication)
-                                       << _T("\"},\n");
+                                       << _T("\"},\n");              
+                        candidatesJson << _T("      \"chart_sources\": [");
+
+                        wxString gemProvenanceKey = wxString::Format(
+                            _T("%.7f:%.7f"),
+                            c.lat,
+                            c.lon);
+
+                        std::map<wxString, wxArrayString>::const_iterator
+                            gemSourceIt =
+                                gemCandidateChartSources.find(gemProvenanceKey);
+
+                        if(gemSourceIt != gemCandidateChartSources.end()) {
+                            const wxArrayString &gemSources =
+                                gemSourceIt->second;
+
+                            for(size_t gemSI = 0;
+                                gemSI < gemSources.GetCount();
+                                ++gemSI) {
+
+                                if(gemSI)
+                                    candidatesJson << _T(", ");
+
+                                wxString gemSource = gemSources[gemSI];
+                                wxString gemChartName =
+                                    gemSource.BeforeLast('|');
+                                wxString gemScaleText =
+                                    gemSource.AfterLast('|');
+
+                                long gemNativeScale = 0;
+                                gemScaleText.ToLong(&gemNativeScale);
+
+                                candidatesJson
+                                    << _T("{\"chart\": \"")
+                                    << GEMJsonEscape(gemChartName)
+                                    << _T("\", \"native_scale\": ")
+                                    << wxString::Format(
+                                           _T("%ld"),
+                                           gemNativeScale)
+                                    << _T("}");
+                            }
+                        }
+
+                        candidatesJson << _T("],\n");
 
                         wxString displayLine = normCategory.text;
                         if( !normColour.text.IsEmpty() ) {
@@ -1538,8 +1581,104 @@ if old not in chart:
     raise RuntimeError("+21 corridor anchor not found")
 chart = chart.replace(old, new, 1)
 
-old = '                        ListOfPI_S57Obj *exactObjects =\n                            GetObjRuleListAtLatLon(\n                                (float)enrichPoints[ei].lat,\n                                (float)enrichPoints[ei].lon,\n                                g_gemQueryRadius,\n                                &enrichVP\n                            );\n\n                        enrichmentQueries++;'
-new = '                        ListOfPI_S57Obj *exactObjects =\n                            new ListOfPI_S57Obj;\n                        exactObjects->DeleteContents(true);\n\n                        for(size_t gemCI = 0; gemCI < g_gemLiveCharts.size(); ++gemCI) {\n                            eSENCChart *gemChart = g_gemLiveCharts[gemCI];\n                            if(!gemChart) continue;\n                            ExtentPI gemExtent;\n                            if(!gemChart->GetChartExtent(&gemExtent)) continue;\n                            if(enrichPoints[ei].lat < gemExtent.SLAT ||\n                               enrichPoints[ei].lat > gemExtent.NLAT ||\n                               enrichPoints[ei].lon < gemExtent.WLON ||\n                               enrichPoints[ei].lon > gemExtent.ELON) continue;\n\n                            ListOfPI_S57Obj *gemObjects =\n                                gemChart->GetObjRuleListAtLatLon(\n                                    (float)enrichPoints[ei].lat,\n                                    (float)enrichPoints[ei].lon,\n                                    g_gemQueryRadius, &enrichVP);\n                            if(gemObjects) {\n                                for(ListOfPI_S57Obj::Node *gn = gemObjects->GetFirst();\n                                    gn; gn = gn->GetNext()) {\n                                    PI_S57Obj *go = gn->GetData();\n                                    PI_S57Obj *copy = new PI_S57Obj;\n                                    *copy = *go;\n                                    exactObjects->Append(copy);\n                                }\n                                gemObjects->DeleteContents(false);\n                                delete gemObjects;\n                            }\n                        }\n\n                        enrichmentQueries++;'
+old = '''                        ListOfPI_S57Obj *exactObjects =
+                            GetObjRuleListAtLatLon(
+                                (float)enrichPoints[ei].lat,
+                                (float)enrichPoints[ei].lon,
+                                g_gemQueryRadius,
+                                &enrichVP
+                            );
+
+                        enrichmentQueries++;'''
+
+new = '''                        ListOfPI_S57Obj *exactObjects =
+                            new ListOfPI_S57Obj;
+                        exactObjects->DeleteContents(true);
+
+                        for(size_t gemCI = 0; gemCI < g_gemLiveCharts.size(); ++gemCI) {
+                            eSENCChart *gemChart = g_gemLiveCharts[gemCI];
+                            if(!gemChart) continue;
+
+                            ExtentPI gemExtent;
+                            if(!gemChart->GetChartExtent(&gemExtent)) continue;
+
+                            if(enrichPoints[ei].lat < gemExtent.SLAT ||
+                               enrichPoints[ei].lat > gemExtent.NLAT ||
+                               enrichPoints[ei].lon < gemExtent.WLON ||
+                               enrichPoints[ei].lon > gemExtent.ELON) continue;
+
+                            ListOfPI_S57Obj *gemObjects =
+                                gemChart->GetObjRuleListAtLatLon(
+                                    (float)enrichPoints[ei].lat,
+                                    (float)enrichPoints[ei].lon,
+                                    g_gemQueryRadius,
+                                    &enrichVP);
+
+                            if(gemObjects) {
+                                bool gemChartSuppliedCandidate = false;
+
+                                for(ListOfPI_S57Obj::Node *gn = gemObjects->GetFirst();
+                                    gn; gn = gn->GetNext()) {
+
+                                    PI_S57Obj *go = gn->GetData();
+
+                                    if(go && go->npt == 1) {
+                                        double gemObjLat = go->m_lat;
+                                        double gemObjLon = go->m_lon;
+
+                                        if(gemObjLon > 180.0)
+                                            gemObjLon -= 360.0;
+
+                                        if(fabs(gemObjLat - enrichPoints[ei].lat) < 0.000002 &&
+                                           fabs(gemObjLon - enrichPoints[ei].lon) < 0.000002) {
+                                            gemChartSuppliedCandidate = true;
+                                        }
+                                    }
+
+                                    PI_S57Obj *copy = new PI_S57Obj;
+                                    *copy = *go;
+                                    exactObjects->Append(copy);
+                                }
+
+                                if(gemChartSuppliedCandidate) {
+                                    wxString gemProvenanceKey =
+                                        wxString::Format(
+                                            _T("%.7f:%.7f"),
+                                            enrichPoints[ei].lat,
+                                            enrichPoints[ei].lon);
+
+                                    wxString gemChartSource =
+                                        wxFileName(gemChart->m_FullPath).GetFullName() +
+                                        wxString::Format(
+                                            _T("|%d"),
+                                            gemChart->GetNativeScale());
+
+                                    wxArrayString &gemSources =
+                                        gemCandidateChartSources[gemProvenanceKey];
+
+                                    bool gemSourceAlreadyPresent = false;
+
+                                    for(size_t gemSI = 0;
+                                        gemSI < gemSources.GetCount();
+                                        ++gemSI) {
+
+                                        if(gemSources[gemSI] == gemChartSource) {
+                                            gemSourceAlreadyPresent = true;
+                                            break;
+                                        }
+                                    }
+
+                                    if(!gemSourceAlreadyPresent)
+                                        gemSources.Add(gemChartSource);
+                                }
+
+                                gemObjects->DeleteContents(false);
+                                delete gemObjects;
+                            }
+                        }
+
+                        enrichmentQueries++;'''
+
 if old not in chart:
     raise RuntimeError("+21 enrichment anchor not found")
 chart = chart.replace(old, new, 1)
@@ -2056,6 +2195,18 @@ chart = chart.replace(
 chart = chart.replace('GEMBUILD +32 production candidate output active',
                       'GEMBUILD +32 full GPX route scalability test active')
 
+# +33A.1: candidate-level source-chart provenance.
+chart = chart.replace('GEM +33A', 'GEM +33A.1')
+chart = chart.replace('GEMPROX +33A', 'GEMPROX +33A.1')
+chart = chart.replace('GEMPOINT +33A', 'GEMPOINT +33A.1')
+chart = chart.replace('GEMROUTE +33A', 'GEMROUTE +33A.1')
+chart = chart.replace('GEMVIEW +33A', 'GEMVIEW +33A.1')
+chart = chart.replace('GEMDIAG +33A', 'GEMDIAG +33A.1')
+chart = chart.replace('GEMCANDIDATES +33A', 'GEMCANDIDATES +33A.1')
+chart = chart.replace(
+    'GEMBUILD +33A.1 overlap deduplication active',
+    'GEMBUILD +33A.1 overlap deduplication and chart provenance active'
+)
 chart_path.write_text(chart, encoding="utf-8")
 
 print("Patched", chart_path)
@@ -2063,5 +2214,5 @@ print("GEM +29: peer-chart PI_S57Obj geographic coordinates used directly")
 print("GEM +29: point-object identity qualified by geographic position")
 print("GEM +11: +9 selected-object export retained")
 print("GEM +11: +10 corridor diagnostic retained")
-print("GEM +33A: +32 full-GPX scanner retained; overlapping component/light deduplication active")
+print("GEM +33A.1: +33A scanner/deduplication retained; candidate chart provenance active")
 print("GEM +18: normalized/raw navigation candidates -> gem-route-candidates-v2.json")
