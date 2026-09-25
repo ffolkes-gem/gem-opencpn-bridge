@@ -1896,8 +1896,8 @@ chart = chart.replace('gemDir + wxFILE_SEP_PATH + _T("gem-route-query.json")',
 
 old = r'''            // +16: bounded multi-waypoint parser. Accept 2..32
             // {"lat":..., "lon":...} points from the GEM route file.
-            double routeLat[512] = {0.0};
-            double routeLon[512] = {0.0};
+            double routeLat[32] = {0.0};
+            double routeLon[32] = {0.0};
             int routePointCount = 0;
 
             size_t scanPos = 0;
