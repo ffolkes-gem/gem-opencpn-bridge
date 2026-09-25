@@ -1563,6 +1563,109 @@ for oldver in ("GEM +18", "GEM +19", "GEM +20", "GEM +21"):
 for oldver in ("GEMVIEW +18", "GEMVIEW +19", "GEMVIEW +20", "GEMVIEW +21"):
     chart = chart.replace(oldver, "GEMVIEW +22")
 
+# +23 candidate-only proximity sweep: preserve the +/-50m context scan, but
+# discover physical buoy/beacon primaries to 1000m and feed them into the
+# existing exact-position enrichment/candidate assembler.
+marker = """                    // Second pass: exact-position enrichment for point
+                    // navigation marks discovered by the corridor."""
+insert = r"""                    // +28 CANDIDATE PROXIMITY SWEEP
+                    const double gemCandidateLimitMetres = 1000.0;
+                    const double gemCandidateGridMetres = 100.0;
+                    unsigned long gemCandidateQueries = 0;
+                    unsigned long gemCandidatePrimaryHits = 0;
+
+                    for( int leg = 0; leg < routePointCount - 1; ++leg ) {
+                        const double meanLatRad = ((routeLat[leg] + routeLat[leg + 1]) * 0.5) * pi11 / 180.0;
+                        const double metresPerDegLon23 = metresPerDegLat11 * cos(meanLatRad);
+                        const double dNorth = (routeLat[leg + 1] - routeLat[leg]) * metresPerDegLat11;
+                        const double dEast = (routeLon[leg + 1] - routeLon[leg]) * metresPerDegLon23;
+                        const double legLength = sqrt((dNorth*dNorth) + (dEast*dEast));
+                        if( legLength <= 0.1 ) continue;
+                        const double uNorth = dNorth / legLength, uEast = dEast / legLength;
+                        const double pNorth = -uEast, pEast = uNorth;
+                        int alongSteps = (int)ceil(legLength / gemCandidateGridMetres);
+                        if( alongSteps < 1 ) alongSteps = 1;
+
+                        for( int step = 0; step <= alongSteps; ++step ) {
+                            double along = (step == alongSteps) ? legLength : step * gemCandidateGridMetres;
+                            if( along > legLength ) along = legLength;
+                            for( int oi = -10; oi <= 10; ++oi ) {
+                                const double offset = oi * gemCandidateGridMetres;
+                                const double sampleEast = (uEast*along) + (pEast*offset);
+                                const double sampleNorth = (uNorth*along) + (pNorth*offset);
+                                const float sampleLat = (float)(routeLat[leg] + sampleNorth/metresPerDegLat11);
+                                const float sampleLon = (float)(routeLon[leg] + sampleEast/metresPerDegLon23);
+
+                                PlugIn_ViewPort candidateVP = g_gemQueryVP;
+                                const double vpDLat = sampleLat - candidateVP.clat;
+                                const double vpDLon = sampleLon - candidateVP.clon;
+                                candidateVP.clat = sampleLat; candidateVP.clon = sampleLon;
+                                candidateVP.lat_min += vpDLat; candidateVP.lat_max += vpDLat;
+                                candidateVP.lon_min += vpDLon; candidateVP.lon_max += vpDLon;
+
+                                for(size_t gemCI=0; gemCI<g_gemLiveCharts.size(); ++gemCI) {
+                                    eSENCChart *gemChart=g_gemLiveCharts[gemCI]; if(!gemChart) continue;
+                                    ExtentPI gemExtent; if(!gemChart->GetChartExtent(&gemExtent)) continue;
+                                    if(sampleLat<gemExtent.SLAT || sampleLat>gemExtent.NLAT || sampleLon<gemExtent.WLON || sampleLon>gemExtent.ELON) continue;
+                                    ListOfPI_S57Obj *candidateObjects = gemChart->GetObjRuleListAtLatLon(sampleLat,sampleLon,g_gemQueryRadius,&candidateVP);
+                                    gemCandidateQueries++;
+                                    if(!candidateObjects) continue;
+                                    for(ListOfPI_S57Obj::Node *cn=candidateObjects->GetFirst(); cn; cn=cn->GetNext()) {
+                                        PI_S57Obj *co=cn->GetData(); if(!co || co->npt!=1) continue;
+                                        wxString feature(co->FeatureName,wxConvUTF8);
+                                        bool primary = feature==_T("BOYLAT") || feature==_T("BOYCAR") || feature==_T("BOYSAW") || feature==_T("BOYISD") || feature==_T("BOYSPP") || feature==_T("BCNLAT") || feature==_T("BCNCAR") || feature==_T("BCNSAW") || feature==_T("BCNSPP");
+                                        if(!primary) continue;
+                                        double objectLon,objectLat;
+                                        fromSM_Plugin((co->x*co->x_rate)+co->x_origin,(co->y*co->y_rate)+co->y_origin,m_ref_lat,m_ref_lon,&objectLat,&objectLon);
+                                        if(objectLon>180.0) objectLon-=360.0;
+
+                                        double minDistance=1.0e30;
+                                        for(int dl=0; dl<routePointCount-1; ++dl) {
+                                            const double localMeanLat=((routeLat[dl]+routeLat[dl+1]+objectLat)/3.0)*pi11/180.0;
+                                            const double mLon=metresPerDegLat11*cos(localMeanLat);
+                                            const double ax=(routeLon[dl]-objectLon)*mLon, ay=(routeLat[dl]-objectLat)*metresPerDegLat11;
+                                            const double bx=(routeLon[dl+1]-objectLon)*mLon, by=(routeLat[dl+1]-objectLat)*metresPerDegLat11;
+                                            const double vx=bx-ax, vy=by-ay, vv=vx*vx+vy*vy;
+                                            double q=0.0; if(vv>0.000001) q=-((ax*vx)+(ay*vy))/vv;
+                                            if(q<0.0) q=0.0; if(q>1.0) q=1.0;
+                                            const double px=ax+q*vx, py=ay+q*vy;
+                                            const double d=sqrt(px*px+py*py); if(d<minDistance) minDistance=d;
+                                        }
+                                        if(minDistance<=gemCandidateLimitMetres) {
+                                            wxString key=feature+wxString::Format(_T(":%d"),co->Index);
+                                            std::map<wxString,GEMRouteHit>::iterator hitIt=routeHits.find(key);
+                                            if(hitIt==routeHits.end()) {
+                                                GEMRouteHit h; h.feature=feature; h.index=co->Index; h.lat=objectLat; h.lon=objectLon; h.hasPosition=true; h.hits=0; h.enriched=false; routeHits[key]=h;
+                                            }
+                                            gemCandidatePrimaryHits++;
+                                        }
+                                    }
+                                    delete candidateObjects;
+                                }
+                            }
+                        }
+                    }
+                    wxLogMessage(_T("GEMPROX +28 queries=%lu primary_hits=%lu limit=%.0fm"),gemCandidateQueries,gemCandidatePrimaryHits,gemCandidateLimitMetres);
+
+"""
+if marker not in chart: raise RuntimeError('+28 marker not found')
+chart=chart.replace(marker,insert+marker,1)
+for v in ('GEM +18','GEM +19','GEM +20','GEM +21','GEM +22'): chart=chart.replace(v,'GEM +28')
+for v in ('GEMVIEW +18','GEMVIEW +19','GEMVIEW +20','GEMVIEW +21','GEMVIEW +22'): chart=chart.replace(v,'GEMVIEW +28')
+
+
+# +28 identity cleanup: the cumulative source still contains historical
+# +19/+22 labels.  Normalize the route-related labels so the runtime log
+# proves exactly which experimental build is active.
+for old, new in (
+    ("GEMPOINT +22", "GEMPOINT +28"),
+    ("GEMROUTE +19", "GEMROUTE +28"),
+    ("GEMDIAG +19", "GEMDIAG +28"),
+    ("GEMCANDIDATES +19", "GEMCANDIDATES +28"),
+    ('"scanner_version": "GEM +22"', '"scanner_version": "GEM +28"'),
+):
+    chart = chart.replace(old, new)
+
 chart_path.write_text(chart, encoding="utf-8")
 
 print("Patched", chart_path)
