@@ -485,14 +485,14 @@ chart = replace_once(
                     const double legLength =
                         sqrt((dNorth * dNorth) + (dEast * dEast));
 
-                    if( legLength <= 0.1 )
-                        continue;
+                    if( legLength <= 0.1 ) {
+                        routeValid = false;
+                        break;
+                    }
                     routeLength += legLength;
                 }
 
-                if( routeValid && routeLength <= 100000.0 ) {
-                    wxLogMessage(_T("GEMROUTE +32 FULL ROUTE length=%.1f m points=%d"),
-                                 routeLength, routePointCount);
+                if( routeValid && routeLength <= 30000.0 ) {
 
                     struct GEMRouteHit {
                         wxString feature;
@@ -552,8 +552,6 @@ chart = replace_once(
                             metresPerDegLon11;
                         const double legLength =
                             sqrt((dNorth * dNorth) + (dEast * dEast));
-                        if( legLength <= 0.1 )
-                            continue;
                         const double uEast = dEast / legLength;
                         const double uNorth = dNorth / legLength;
                         const double pEast = -uNorth;
@@ -1990,6 +1988,13 @@ new = r'''            // +31: standard GPX handoff parser. Reads rtept/trkpt/wpt
             wxLogMessage(_T("GEMGPX +32 READ points=%d path=%s"),
                          routePointCount, routeInputPath.c_str());'''
 if old not in chart: raise RuntimeError('+31 GPX parser anchor not found')
+chart = chart.replace(old, new, 1)
+
+old = '                if( routeValid && routeLength <= 30000.0 ) {'
+new = '''                if( routeValid && routeLength <= 100000.0 ) {
+                    wxLogMessage(_T("GEMROUTE +32 FULL ROUTE length=%.1f m points=%d"),
+                                 routeLength, routePointCount);'''
+if old not in chart: raise RuntimeError('+31 route-length gate anchor not found')
 chart = chart.replace(old, new, 1)
 
 chart = chart.replace('gem-route-query.json must contain 2 to 32 ',
