@@ -485,10 +485,8 @@ chart = replace_once(
                     const double legLength =
                         sqrt((dNorth * dNorth) + (dEast * dEast));
 
-                    if( legLength <= 0.1 ) {
-                        routeValid = false;
-                        break;
-                    }
+                    if( legLength <= 0.1 )
+                        continue;
                     routeLength += legLength;
                 }
 
@@ -554,6 +552,8 @@ chart = replace_once(
                             metresPerDegLon11;
                         const double legLength =
                             sqrt((dNorth * dNorth) + (dEast * dEast));
+                        if( legLength <= 0.1 )
+                            continue;
                         const double uEast = dEast / legLength;
                         const double uNorth = dNorth / legLength;
                         const double pEast = -uNorth;
