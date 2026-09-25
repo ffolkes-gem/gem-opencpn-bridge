@@ -492,7 +492,9 @@ chart = replace_once(
                     routeLength += legLength;
                 }
 
-                if( routeValid && routeLength <= 30000.0 ) {
+                if( routeValid && routeLength <= 100000.0 ) {
+                    wxLogMessage(_T("GEMROUTE +32 FULL ROUTE length=%.1f m points=%d"),
+                                 routeLength, routePointCount);
 
                     struct GEMRouteHit {
                         wxString feature;
@@ -1989,24 +1991,6 @@ new = r'''            // +31: standard GPX handoff parser. Reads rtept/trkpt/wpt
                          routePointCount, routeInputPath.c_str());'''
 if old not in chart: raise RuntimeError('+31 GPX parser anchor not found')
 chart = chart.replace(old, new, 1)
-
-old = '                if( routeValid && routeLength <= 30000.0 ) {'
-new = '''                if( routeValid && routeLength <= 100000.0 ) {
-                    wxLogMessage(_T("GEMROUTE +32 FULL ROUTE length=%.1f m points=%d"),
-                                 routeLength, routePointCount);'''
-
-if old not in chart:
-    raise RuntimeError('+32 30km route gate anchor not found')
-
-chart = chart.replace(old, new, 1)
-
-if 'routeLength <= 30000.0' in chart:
-    raise RuntimeError('+32 ERROR: 30km route gate still present after patch')
-
-if 'routeLength <= 100000.0' not in chart:
-    raise RuntimeError('+32 ERROR: 100km route gate was not installed')
-    
-print("GEM +32 VERIFIED: 30km gate removed and 100km gate installed")
 
 chart = chart.replace('gem-route-query.json must contain 2 to 32 ',
                       'gem-route.gpx must contain at least 2 valid ')
