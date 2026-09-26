@@ -2359,6 +2359,11 @@ _resare_struct_replacement = r'''                    std::map<wxString, GEMRoute
                         unsigned long hits;
                     };
                     std::map<wxString, GEMResareDiag> gemResareDiag;
+                    // Cache each returned RESARE object pointer to its decoded
+                    // diagnostic key so repeated sample hits avoid re-decoding
+                    // every S-57 attribute. The final diagnostic deduplication
+                    // key and JSON semantics remain unchanged.
+                    std::map<const PI_S57Obj *, wxString> gemResareKeyCache;
 
                     struct GEMCandidate {'''
 if _resare_struct_anchor not in chart:
@@ -2383,52 +2388,65 @@ _resare_indent = _resare_capture_match.group("indent")
 _resare_observer = r'''
 // +33C5-DIAG: observe RESARE returned by the existing frozen +33B query only.
 if( feature == _T("RESARE") ) {
-    GEMResareDiag d;
-    d.index = ro->Index;
-    d.firstSampleLat = sampleLat;
-    d.firstSampleLon = sampleLon;
-    d.hits = 1;
+    std::map<const PI_S57Obj *, wxString>::iterator cacheIt =
+        gemResareKeyCache.find(ro);
 
-    for( int rai = 0; rai < ro->n_attr; ++rai ) {
-        wxString an(
-            ro->att_array + (rai * 6),
-            wxConvUTF8,
-            6
-        );
-        an.Trim(true).Trim(false);
-        wxString av =
-            GetObjectAttributeValueAsString(
-                ro, rai, an
-            );
-
-        if( an == _T("OBJNAM") ) d.objnam = av;
-        else if( an == _T("RESTRN") ) d.restrn = av;
-        else if( an == _T("CATREA") ) d.catrea = av;
-        else if( an == _T("INFORM") ) d.inform = av;
-        else if( an == _T("TXTDSC") ) d.txtdsc = av;
-        else if( an == _T("STATUS") ) d.status = av;
-        else if( an == _T("DATSTA") ) d.datsta = av;
-        else if( an == _T("DATEND") ) d.datend = av;
-        else if( an == _T("SORDAT") ) d.sordat = av;
-        else if( an == _T("SORIND") ) d.sorind = av;
-    }
-
-    wxString rk =
-        wxString::Format(_T("%d|"), ro->Index) +
-        d.objnam + _T("|") +
-        d.restrn + _T("|") +
-        d.catrea + _T("|") +
-        d.inform + _T("|") +
-        d.sorind;
-
-    std::map<wxString, GEMResareDiag>::iterator ri =
-        gemResareDiag.find(rk);
-
-    if( ri == gemResareDiag.end() ) {
-        gemResareDiag[rk] = d;
+    if( cacheIt != gemResareKeyCache.end() ) {
+        std::map<wxString, GEMResareDiag>::iterator ri =
+            gemResareDiag.find(cacheIt->second);
+        if( ri != gemResareDiag.end() )
+            ri->second.hits++;
     }
     else {
-        ri->second.hits++;
+        GEMResareDiag d;
+        d.index = ro->Index;
+        d.firstSampleLat = sampleLat;
+        d.firstSampleLon = sampleLon;
+        d.hits = 1;
+
+        for( int rai = 0; rai < ro->n_attr; ++rai ) {
+            wxString an(
+                ro->att_array + (rai * 6),
+                wxConvUTF8,
+                6
+            );
+            an.Trim(true).Trim(false);
+            wxString av =
+                GetObjectAttributeValueAsString(
+                    ro, rai, an
+                );
+
+            if( an == _T("OBJNAM") ) d.objnam = av;
+            else if( an == _T("RESTRN") ) d.restrn = av;
+            else if( an == _T("CATREA") ) d.catrea = av;
+            else if( an == _T("INFORM") ) d.inform = av;
+            else if( an == _T("TXTDSC") ) d.txtdsc = av;
+            else if( an == _T("STATUS") ) d.status = av;
+            else if( an == _T("DATSTA") ) d.datsta = av;
+            else if( an == _T("DATEND") ) d.datend = av;
+            else if( an == _T("SORDAT") ) d.sordat = av;
+            else if( an == _T("SORIND") ) d.sorind = av;
+        }
+
+        wxString rk =
+            wxString::Format(_T("%d|"), ro->Index) +
+            d.objnam + _T("|") +
+            d.restrn + _T("|") +
+            d.catrea + _T("|") +
+            d.inform + _T("|") +
+            d.sorind;
+
+        gemResareKeyCache[ro] = rk;
+
+        std::map<wxString, GEMResareDiag>::iterator ri =
+            gemResareDiag.find(rk);
+
+        if( ri == gemResareDiag.end() ) {
+            gemResareDiag[rk] = d;
+        }
+        else {
+            ri->second.hits++;
+        }
     }
 }
 
