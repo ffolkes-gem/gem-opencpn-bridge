@@ -179,6 +179,59 @@ chart = replace_once(
     """            }
     } // Object for loop
 
+    // +33C2-DIAG: serialized only after the complete frozen +33B route block closes.
+    // +33C2-DIAG: write route-intersected RESARE attributes to a
+    // separate diagnostic file. No production candidate semantics are changed.
+    {
+        wxString resarePath = gemDir + wxFileName::GetPathSeparator() +
+            _T("gem-resare-diagnostic.json");
+        wxString rj;
+        rj << _T("{\n")
+           << _T("  \"gem_format\": \"resare-diagnostic-v1\",\n")
+           << _T("  \"scanner_version\": \"GEM +33C2-DIAG\",\n")
+           << _T("  \"note\": \"RESARE objects returned at existing +33B route sample positions; diagnostic only\",\n")
+           << _T("  \"restricted_areas\": [\n");
+
+        size_t rn = 0;
+        for( std::map<wxString, GEMResareDiag>::const_iterator it = gemResareDiag.begin();
+             it != gemResareDiag.end(); ++it, ++rn ) {
+            const GEMResareDiag &d = it->second;
+            rj << _T("    {")
+               << wxString::Format(_T("\"index\": %d, "), d.index)
+               << _T("\"OBJNAM\": \"") << GEMJsonEscape(d.objnam) << _T("\", ")
+               << _T("\"RESTRN\": \"") << GEMJsonEscape(d.restrn) << _T("\", ")
+               << _T("\"CATREA\": \"") << GEMJsonEscape(d.catrea) << _T("\", ")
+               << _T("\"INFORM\": \"") << GEMJsonEscape(d.inform) << _T("\", ")
+               << _T("\"TXTDSC\": \"") << GEMJsonEscape(d.txtdsc) << _T("\", ")
+               << _T("\"STATUS\": \"") << GEMJsonEscape(d.status) << _T("\", ")
+               << _T("\"DATSTA\": \"") << GEMJsonEscape(d.datsta) << _T("\", ")
+               << _T("\"DATEND\": \"") << GEMJsonEscape(d.datend) << _T("\", ")
+               << _T("\"SORDAT\": \"") << GEMJsonEscape(d.sordat) << _T("\", ")
+               << _T("\"SORIND\": \"") << GEMJsonEscape(d.sorind) << _T("\", ")
+               << wxString::Format(_T("\"first_route_sample\": {\"latitude\": %.8f, \"longitude\": %.8f}, "),
+                                  d.firstSampleLat, d.firstSampleLon)
+               << wxString::Format(_T("\"sample_hits\": %lu"), d.hits)
+               << _T("}");
+            if( rn + 1 < gemResareDiag.size() ) rj << _T(",");
+            rj << _T("\n");
+        }
+        rj << _T("  ],\n")
+           << wxString::Format(_T("  \"restricted_area_count\": %lu\n"),
+                              (unsigned long)gemResareDiag.size())
+           << _T("}\n");
+
+        wxFFile rf;
+        if( rf.Open(resarePath, _T("wb")) ) {
+            rf.Write(rj, wxConvUTF8);
+            rf.Close();
+            wxLogMessage(_T("GEMRESARE +33C2-DIAG wrote %lu RESARE records to %s"),
+                         (unsigned long)gemResareDiag.size(), resarePath.c_str());
+        } else {
+            wxLogMessage(_T("GEMRESARE +33C2-DIAG could not open %s"), resarePath.c_str());
+        }
+    }
+
+
     // Add the additional info files
 """,
     r"""            }
@@ -402,6 +455,29 @@ chart = replace_once(
     // normal Object Query. This remains a deliberately bounded proof.
     // --------------------------------------------------------
 
+    // +33C2-DIAG: RESARE state outside frozen route-valid branch.
+    // +33C-DIAG: collect RESARE objects encountered by the
+    // existing route sampling. This is diagnostic only and
+    // does not alter +33B candidate acquisition/output.
+    struct GEMResareDiag {
+        int index;
+        wxString objnam;
+        wxString restrn;
+        wxString catrea;
+        wxString inform;
+        wxString txtdsc;
+        wxString status;
+        wxString datsta;
+        wxString datend;
+        wxString sordat;
+        wxString sorind;
+        double firstSampleLat;
+        double firstSampleLon;
+        unsigned long hits;
+    };
+    std::map<wxString, GEMResareDiag> gemResareDiag;
+
+
     {
         wxString routeInputPath =
             gemDir + wxFILE_SEP_PATH + _T("gem-route-query.json");
@@ -505,27 +581,6 @@ chart = replace_once(
                     };
 
                     std::map<wxString, GEMRouteHit> routeHits;
-
-                    // +33C-DIAG: collect RESARE objects encountered by the
-                    // existing route sampling. This is diagnostic only and
-                    // does not alter +33B candidate acquisition/output.
-                    struct GEMResareDiag {
-                        int index;
-                        wxString objnam;
-                        wxString restrn;
-                        wxString catrea;
-                        wxString inform;
-                        wxString txtdsc;
-                        wxString status;
-                        wxString datsta;
-                        wxString datend;
-                        wxString sordat;
-                        wxString sorind;
-                        double firstSampleLat;
-                        double firstSampleLon;
-                        unsigned long hits;
-                    };
-                    std::map<wxString, GEMResareDiag> gemResareDiag;
 
                     struct GEMCandidate {
                         wxString primaryFeature;
@@ -737,59 +792,6 @@ chart = replace_once(
                                     delete routeObjects;
                                 }
                             }
-                        }
-                    }
-
-                    // +33C-DIAG: write route-intersected RESARE attributes to a
-                    // separate diagnostic file. No production candidate semantics are changed.
-                    {
-                        wxString resarePath = gemDir + wxFileName::GetPathSeparator() +
-                            _T("gem-resare-diagnostic.json");
-                        wxString rj;
-                        rj << _T("{\n")
-                           << _T("  \"gem_format\": \"resare-diagnostic-v1\",\n")
-                           << _T("  \"scanner_version\": \"GEM +33C-DIAG\",\n")
-                           << wxString::Format(_T("  \"route_length_metres\": %.1f,\n"), routeLength)
-                           << wxString::Format(_T("  \"route_sample_count\": %lu,\n"), routeSamples)
-                           << _T("  \"note\": \"RESARE objects returned at existing +33B route sample positions; diagnostic only\",\n")
-                           << _T("  \"restricted_areas\": [\n");
-
-                        size_t rn = 0;
-                        for( std::map<wxString, GEMResareDiag>::const_iterator it = gemResareDiag.begin();
-                             it != gemResareDiag.end(); ++it, ++rn ) {
-                            const GEMResareDiag &d = it->second;
-                            rj << _T("    {")
-                               << wxString::Format(_T("\"index\": %d, "), d.index)
-                               << _T("\"OBJNAM\": \"") << GEMJsonEscape(d.objnam) << _T("\", ")
-                               << _T("\"RESTRN\": \"") << GEMJsonEscape(d.restrn) << _T("\", ")
-                               << _T("\"CATREA\": \"") << GEMJsonEscape(d.catrea) << _T("\", ")
-                               << _T("\"INFORM\": \"") << GEMJsonEscape(d.inform) << _T("\", ")
-                               << _T("\"TXTDSC\": \"") << GEMJsonEscape(d.txtdsc) << _T("\", ")
-                               << _T("\"STATUS\": \"") << GEMJsonEscape(d.status) << _T("\", ")
-                               << _T("\"DATSTA\": \"") << GEMJsonEscape(d.datsta) << _T("\", ")
-                               << _T("\"DATEND\": \"") << GEMJsonEscape(d.datend) << _T("\", ")
-                               << _T("\"SORDAT\": \"") << GEMJsonEscape(d.sordat) << _T("\", ")
-                               << _T("\"SORIND\": \"") << GEMJsonEscape(d.sorind) << _T("\", ")
-                               << wxString::Format(_T("\"first_route_sample\": {\"latitude\": %.8f, \"longitude\": %.8f}, "),
-                                                  d.firstSampleLat, d.firstSampleLon)
-                               << wxString::Format(_T("\"sample_hits\": %lu"), d.hits)
-                               << _T("}");
-                            if( rn + 1 < gemResareDiag.size() ) rj << _T(",");
-                            rj << _T("\n");
-                        }
-                        rj << _T("  ],\n")
-                           << wxString::Format(_T("  \"restricted_area_count\": %lu\n"),
-                                              (unsigned long)gemResareDiag.size())
-                           << _T("}\n");
-
-                        wxFFile rf;
-                        if( rf.Open(resarePath, _T("wb")) ) {
-                            rf.Write(rj, wxConvUTF8);
-                            rf.Close();
-                            wxLogMessage(_T("GEMRESARE +33C-DIAG wrote %lu RESARE records to %s"),
-                                         (unsigned long)gemResareDiag.size(), resarePath.c_str());
-                        } else {
-                            wxLogMessage(_T("GEMRESARE +33C-DIAG could not open %s"), resarePath.c_str());
                         }
                     }
 
@@ -2427,7 +2429,7 @@ chart = chart.replace(
     'GEMBUILD +33A.1 overlap deduplication and chart provenance active',
     'GEMBUILD +33B extended LIGHTS semantics active'
 )
-chart = chart.replace("GEMBUILD +33B extended LIGHTS semantics active", "GEMBUILD +33B extended LIGHTS semantics active; +33C-DIAG RESARE diagnostic active")
+chart = chart.replace("GEMBUILD +33B extended LIGHTS semantics active", "GEMBUILD +33B extended LIGHTS semantics active; +33C2-DIAG RESARE diagnostic active")
 
 chart_path.write_text(chart, encoding="utf-8")
 
@@ -2437,5 +2439,5 @@ print("GEM +29: point-object identity qualified by geographic position")
 print("GEM +11: +9 selected-object export retained")
 print("GEM +11: +10 corridor diagnostic retained")
 print("GEM +33B: +33A.1 acquisition/provenance retained; extended LIGHTS semantics active")
-print("GEM +33C-DIAG: separate RESARE diagnostic output -> gem-resare-diagnostic.json")
+print("GEM +33C2-DIAG: RESARE diagnostic isolated outside frozen +33B route closing structure")
 print("GEM +18: normalized/raw navigation candidates -> gem-route-candidates-v2.json")
