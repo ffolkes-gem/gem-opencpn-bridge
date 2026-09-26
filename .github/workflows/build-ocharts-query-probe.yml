@@ -23,10 +23,6 @@ jobs:
         shell: powershell
         run: python gem\tools\patch_ocharts.py
 
-      - name: Apply GEM selected-object probe
-        shell: powershell
-        run: python gem\tools\patch_ocharts.py
-
       - name: Diagnose current route closing structure
         shell: powershell
         run: |
