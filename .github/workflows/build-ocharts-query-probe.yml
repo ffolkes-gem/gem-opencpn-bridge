@@ -22,7 +22,21 @@ jobs:
       - name: Apply GEM selected-object probe
         shell: powershell
         run: python gem\tools\patch_ocharts.py
+        
+      - name: Diagnose generated eSENCChart.cpp
+        shell: powershell
+        run: |
+          Write-Host "=== Search for segment_pair ==="
+          Select-String -Path "ocharts\src\eSENCChart.cpp" -Pattern "segment_pair" -Context 10,20
 
+          Write-Host "=== Generated source lines 10450-10540 ==="
+          $lines = Get-Content "ocharts\src\eSENCChart.cpp"
+          for ($i = 10449; $i -lt [Math]::Min(10540, $lines.Count); $i++) {
+              "{0,6}: {1}" -f ($i + 1), $lines[$i]
+          }
+
+          Write-Host "=== Generated source size ==="
+          Write-Host "Lines:" $lines.Count
       - name: Install Gettext
         shell: powershell
         run: |
