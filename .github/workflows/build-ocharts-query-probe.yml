@@ -26,17 +26,13 @@ jobs:
       - name: Diagnose generated eSENCChart.cpp
         shell: powershell
         run: |
-          Write-Host "=== Search for segment_pair ==="
-          Select-String -Path "ocharts\src\eSENCChart.cpp" -Pattern "segment_pair" -Context 10,20
-
-          Write-Host "=== Generated source lines 10450-10540 ==="
           $lines = Get-Content "ocharts\src\eSENCChart.cpp"
-          for ($i = 10449; $i -lt [Math]::Min(10540, $lines.Count); $i++) {
+
+          Write-Host "=== Generated source lines 9580-9635 ==="
+          for ($i = 9579; $i -lt [Math]::Min(9635, $lines.Count); $i++) {
               "{0,6}: {1}" -f ($i + 1), $lines[$i]
           }
-
-          Write-Host "=== Generated source size ==="
-          Write-Host "Lines:" $lines.Count
+          
       - name: Install Gettext
         shell: powershell
         run: |
