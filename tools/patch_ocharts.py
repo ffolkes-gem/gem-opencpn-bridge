@@ -2318,7 +2318,7 @@ chart = chart.replace(
     'GEMBUILD +33B extended LIGHTS semantics active'
 )
 
-# +33C3-DIAG: final transformation of the known-good +33B assembled source.
+# +33C4-DIAG: final transformation of the known-good +33B assembled source.
 # The historical +33B cumulative patch above is deliberately untouched.
 
 _resare_struct_anchor = r'''                    std::map<wxString, GEMRouteHit> routeHits;
@@ -2326,7 +2326,7 @@ _resare_struct_anchor = r'''                    std::map<wxString, GEMRouteHit> 
                     struct GEMCandidate {'''
 _resare_struct_replacement = r'''                    std::map<wxString, GEMRouteHit> routeHits;
 
-                    // +33C3-DIAG: diagnostic state only.
+                    // +33C4-DIAG: diagnostic state only.
                     struct GEMResareDiag {
                         int index;
                         wxString objnam;
@@ -2347,80 +2347,92 @@ _resare_struct_replacement = r'''                    std::map<wxString, GEMRoute
 
                     struct GEMCandidate {'''
 if _resare_struct_anchor not in chart:
-    raise RuntimeError("+33C3 struct anchor not found after +33B assembly")
+    raise RuntimeError("+33C4 struct anchor not found after +33B assembly")
 chart = chart.replace(_resare_struct_anchor, _resare_struct_replacement, 1)
 
-_resare_capture_anchor = r'''                                        wxString key =
-                                            feature + wxString::Format(
-                                                _T(":%d"), ro->Index);
+# +33C4-DIAG: locate the first-pass routeHits insertion point by
+# syntax rather than fragile exact whitespace.
+import re as _gem_re
 
-                                        std::map<wxString, GEMRouteHit>::iterator
-                                            hitIt = routeHits.find(key);'''
-_resare_capture_replacement = r'''                                        wxString key =
-                                            feature + wxString::Format(
-                                                _T(":%d"), ro->Index);
+_resare_capture_pattern = _gem_re.compile(
+    r'(?P<indent>[ \t]*)std::map<wxString,\s*GEMRouteHit>::iterator\s*\n'
+    r'(?P=indent)[ \t]*hitIt\s*=\s*routeHits\.find\(key\);'
+)
 
-                                        // +33C3-DIAG: observe RESARE returned by
-                                        // the existing frozen +33B query only.
-                                        if( feature == _T("RESARE") ) {
-                                            GEMResareDiag d;
-                                            d.index = ro->Index;
-                                            d.firstSampleLat = sampleLat;
-                                            d.firstSampleLon = sampleLon;
-                                            d.hits = 1;
+_resare_capture_match = _resare_capture_pattern.search(chart)
+if not _resare_capture_match:
+    raise RuntimeError("+33C4 routeHits insertion point not found after +33B assembly")
 
-                                            for( int rai = 0; rai < ro->n_attr; ++rai ) {
-                                                wxString an(
-                                                    ro->att_array + (rai * 6),
-                                                    wxConvUTF8,
-                                                    6
-                                                );
-                                                an.Trim(true).Trim(false);
-                                                wxString av =
-                                                    GetObjectAttributeValueAsString(
-                                                        ro, rai, an
-                                                    );
+_resare_indent = _resare_capture_match.group("indent")
 
-                                                if( an == _T("OBJNAM") ) d.objnam = av;
-                                                else if( an == _T("RESTRN") ) d.restrn = av;
-                                                else if( an == _T("CATREA") ) d.catrea = av;
-                                                else if( an == _T("INFORM") ) d.inform = av;
-                                                else if( an == _T("TXTDSC") ) d.txtdsc = av;
-                                                else if( an == _T("STATUS") ) d.status = av;
-                                                else if( an == _T("DATSTA") ) d.datsta = av;
-                                                else if( an == _T("DATEND") ) d.datend = av;
-                                                else if( an == _T("SORDAT") ) d.sordat = av;
-                                                else if( an == _T("SORIND") ) d.sorind = av;
-                                            }
+_resare_observer = r'''
+// +33C4-DIAG: observe RESARE returned by the existing frozen +33B query only.
+if( feature == _T("RESARE") ) {
+    GEMResareDiag d;
+    d.index = ro->Index;
+    d.firstSampleLat = sampleLat;
+    d.firstSampleLon = sampleLon;
+    d.hits = 1;
 
-                                            wxString rk =
-                                                wxString::Format(_T("%d|"), ro->Index) +
-                                                d.objnam + _T("|") +
-                                                d.restrn + _T("|") +
-                                                d.catrea + _T("|") +
-                                                d.inform + _T("|") +
-                                                d.sorind;
+    for( int rai = 0; rai < ro->n_attr; ++rai ) {
+        wxString an(
+            ro->att_array + (rai * 6),
+            wxConvUTF8,
+            6
+        );
+        an.Trim(true).Trim(false);
+        wxString av =
+            GetObjectAttributeValueAsString(
+                ro, rai, an
+            );
 
-                                            std::map<wxString, GEMResareDiag>::iterator ri =
-                                                gemResareDiag.find(rk);
+        if( an == _T("OBJNAM") ) d.objnam = av;
+        else if( an == _T("RESTRN") ) d.restrn = av;
+        else if( an == _T("CATREA") ) d.catrea = av;
+        else if( an == _T("INFORM") ) d.inform = av;
+        else if( an == _T("TXTDSC") ) d.txtdsc = av;
+        else if( an == _T("STATUS") ) d.status = av;
+        else if( an == _T("DATSTA") ) d.datsta = av;
+        else if( an == _T("DATEND") ) d.datend = av;
+        else if( an == _T("SORDAT") ) d.sordat = av;
+        else if( an == _T("SORIND") ) d.sorind = av;
+    }
 
-                                            if( ri == gemResareDiag.end() ) {
-                                                gemResareDiag[rk] = d;
-                                            }
-                                            else {
-                                                ri->second.hits++;
-                                            }
-                                        }
+    wxString rk =
+        wxString::Format(_T("%d|"), ro->Index) +
+        d.objnam + _T("|") +
+        d.restrn + _T("|") +
+        d.catrea + _T("|") +
+        d.inform + _T("|") +
+        d.sorind;
 
-                                        std::map<wxString, GEMRouteHit>::iterator
-                                            hitIt = routeHits.find(key);'''
-if _resare_capture_anchor not in chart:
-    raise RuntimeError("+33C3 capture anchor not found after +33B assembly")
-chart = chart.replace(_resare_capture_anchor, _resare_capture_replacement, 1)
+    std::map<wxString, GEMResareDiag>::iterator ri =
+        gemResareDiag.find(rk);
+
+    if( ri == gemResareDiag.end() ) {
+        gemResareDiag[rk] = d;
+    }
+    else {
+        ri->second.hits++;
+    }
+}
+
+'''
+
+_resare_observer = "\n".join(
+    (_resare_indent + line if line else "")
+    for line in _resare_observer.splitlines()
+) + "\n"
+
+chart = (
+    chart[:_resare_capture_match.start()] +
+    _resare_observer +
+    chart[_resare_capture_match.start():]
+)
 
 _resare_output_anchor = r'''                    // +13 presentation normalization.
                     // Preserve raw decoded S-57 strings and derive clean text/code'''
-_resare_output_replacement = r'''                    // +33C3-DIAG: serialize observations from
+_resare_output_replacement = r'''                    // +33C4-DIAG: serialize observations from
                     // existing first-pass route sampling. Separate output only.
                     {
                         wxString resarePath =
@@ -2431,7 +2443,7 @@ _resare_output_replacement = r'''                    // +33C3-DIAG: serialize ob
                         wxString rj;
                         rj << _T("{\n");
                         rj << _T("  \"gem_format\": \"resare-diagnostic-v1\",\n");
-                        rj << _T("  \"scanner_version\": \"GEM +33C3-DIAG\",\n");
+                        rj << _T("  \"scanner_version\": \"GEM +33C4-DIAG\",\n");
                         rj << wxString::Format(
                             _T("  \"route_length_metres\": %.1f,\n"),
                             routeLength
@@ -2499,9 +2511,9 @@ _resare_output_replacement = r'''                    // +33C3-DIAG: serialize ob
 
                             wxLogMessage(
                                 resareOK
-                                    ? _T("GEMRESARE +33C3-DIAG WRITE OK "
+                                    ? _T("GEMRESARE +33C4-DIAG WRITE OK "
                                          "records=%lu path=%s")
-                                    : _T("GEMRESARE +33C3-DIAG WRITE FAILED "
+                                    : _T("GEMRESARE +33C4-DIAG WRITE FAILED "
                                          "records=%lu path=%s"),
                                 (unsigned long)gemResareDiag.size(),
                                 resarePath.c_str()
@@ -2509,7 +2521,7 @@ _resare_output_replacement = r'''                    // +33C3-DIAG: serialize ob
                         }
                         else {
                             wxLogMessage(
-                                _T("GEMRESARE +33C3-DIAG OPEN FAILED path=%s"),
+                                _T("GEMRESARE +33C4-DIAG OPEN FAILED path=%s"),
                                 resarePath.c_str()
                             );
                         }
@@ -2518,18 +2530,18 @@ _resare_output_replacement = r'''                    // +33C3-DIAG: serialize ob
                     // +13 presentation normalization.
                     // Preserve raw decoded S-57 strings and derive clean text/code'''
 if _resare_output_anchor not in chart:
-    raise RuntimeError("+33C3 output anchor not found after +33B assembly")
+    raise RuntimeError("+33C4 output anchor not found after +33B assembly")
 chart = chart.replace(_resare_output_anchor, _resare_output_replacement, 1)
 
 chart = chart.replace(
     "GEMBUILD +33B extended LIGHTS semantics active",
     "GEMBUILD +33B extended LIGHTS semantics active; "
-    "+33C3-DIAG RESARE observer active",
+    "+33C4-DIAG RESARE observer active",
     1
 )
 
 print(
-    "GEM +33C3-DIAG: +33B baseline retained; "
+    "GEM +33C4-DIAG: +33B baseline retained; "
     "RESARE observer -> gem-resare-diagnostic.json"
 )
 
