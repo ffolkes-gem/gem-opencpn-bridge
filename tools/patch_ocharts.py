@@ -92,27 +92,40 @@ chart = replace_once(
     "CreateObjDescriptions marker"
 )
 
-chart = replace_once(
-    chart,
-    """    PI_S57Light* curLight = NULL;
-
-    for( ListOfPI_S57Obj::Node *node = obj_list->GetLast(); node; node = node->GetPrevious() ) {
-""",
-    r"""    PI_S57Light* curLight = NULL;
-
-    // Existing +9 complete Object Query document.
-    wxString gemJson;
-    gemJson << _T("{\n");
-    gemJson << _T("  \"gem_format\": \"navigation-object-selection-v1\",\n");
-    gemJson << _T("  \"objects\": [\n");
-
-    bool gemFirstObject = true;
-    unsigned long gemExportedObjects = 0;
-
-    for( ListOfPI_S57Obj::Node *node = obj_list->GetLast(); node; node = node->GetPrevious() ) {
-""",
-    "selected JSON start"
+# +33C5: historical +9 selected-JSON insertion, made tolerant of
+# harmless whitespace differences while preserving the same generated C++.
+import re as _gem_selected_re
+_selected_json_pattern = _gem_selected_re.compile(
+    r'(?P<indent>[ \t]*)PI_S57Light\*\s*curLight\s*=\s*NULL;\s*\n'
+    r'(?P=indent)\s*\n?'
+    r'(?P=indent)for\(\s*ListOfPI_S57Obj::Node \*node = obj_list->GetLast\(\);'
+    r' node; node = node->GetPrevious\(\) \) \{'
 )
+_selected_json_match = _selected_json_pattern.search(chart)
+if not _selected_json_match:
+    raise SystemExit(
+        "Patch anchor not found: selected JSON start. "
+        "Expected curLight/object-loop structure absent."
+    )
+
+_selected_indent = _selected_json_match.group("indent")
+_selected_json_replacement = (
+    _selected_indent + "PI_S57Light* curLight = NULL;\n\n" +
+    _selected_indent + "// Existing +9 complete Object Query document.\n" +
+    _selected_indent + "wxString gemJson;\n" +
+    _selected_indent + 'gemJson << _T("{\\\\n");\n' +
+    _selected_indent + 'gemJson << _T("  \\\\\\"gem_format\\\\\\": \\\\\\"navigation-object-selection-v1\\\\\\",\\\\n");\n' +
+    _selected_indent + 'gemJson << _T("  \\\\\\"objects\\\\\\": [\\\\n");\n\n' +
+    _selected_indent + "bool gemFirstObject = true;\n" +
+    _selected_indent + "unsigned long gemExportedObjects = 0;\n\n" +
+    _selected_indent + "for( ListOfPI_S57Obj::Node *node = obj_list->GetLast(); node; node = node->GetPrevious() ) {"
+)
+chart = (
+    chart[:_selected_json_match.start()] +
+    _selected_json_replacement +
+    chart[_selected_json_match.end():]
+)
+
 
 chart = replace_once(
     chart,
@@ -2318,7 +2331,7 @@ chart = chart.replace(
     'GEMBUILD +33B extended LIGHTS semantics active'
 )
 
-# +33C4-DIAG: final transformation of the known-good +33B assembled source.
+# +33C5-DIAG: final transformation of the known-good +33B assembled source.
 # The historical +33B cumulative patch above is deliberately untouched.
 
 _resare_struct_anchor = r'''                    std::map<wxString, GEMRouteHit> routeHits;
@@ -2326,7 +2339,7 @@ _resare_struct_anchor = r'''                    std::map<wxString, GEMRouteHit> 
                     struct GEMCandidate {'''
 _resare_struct_replacement = r'''                    std::map<wxString, GEMRouteHit> routeHits;
 
-                    // +33C4-DIAG: diagnostic state only.
+                    // +33C5-DIAG: diagnostic state only.
                     struct GEMResareDiag {
                         int index;
                         wxString objnam;
@@ -2347,10 +2360,10 @@ _resare_struct_replacement = r'''                    std::map<wxString, GEMRoute
 
                     struct GEMCandidate {'''
 if _resare_struct_anchor not in chart:
-    raise RuntimeError("+33C4 struct anchor not found after +33B assembly")
+    raise RuntimeError("+33C5 struct anchor not found after +33B assembly")
 chart = chart.replace(_resare_struct_anchor, _resare_struct_replacement, 1)
 
-# +33C4-DIAG: locate the first-pass routeHits insertion point by
+# +33C5-DIAG: locate the first-pass routeHits insertion point by
 # syntax rather than fragile exact whitespace.
 import re as _gem_re
 
@@ -2361,12 +2374,12 @@ _resare_capture_pattern = _gem_re.compile(
 
 _resare_capture_match = _resare_capture_pattern.search(chart)
 if not _resare_capture_match:
-    raise RuntimeError("+33C4 routeHits insertion point not found after +33B assembly")
+    raise RuntimeError("+33C5 routeHits insertion point not found after +33B assembly")
 
 _resare_indent = _resare_capture_match.group("indent")
 
 _resare_observer = r'''
-// +33C4-DIAG: observe RESARE returned by the existing frozen +33B query only.
+// +33C5-DIAG: observe RESARE returned by the existing frozen +33B query only.
 if( feature == _T("RESARE") ) {
     GEMResareDiag d;
     d.index = ro->Index;
@@ -2432,7 +2445,7 @@ chart = (
 
 _resare_output_anchor = r'''                    // +13 presentation normalization.
                     // Preserve raw decoded S-57 strings and derive clean text/code'''
-_resare_output_replacement = r'''                    // +33C4-DIAG: serialize observations from
+_resare_output_replacement = r'''                    // +33C5-DIAG: serialize observations from
                     // existing first-pass route sampling. Separate output only.
                     {
                         wxString resarePath =
@@ -2443,7 +2456,7 @@ _resare_output_replacement = r'''                    // +33C4-DIAG: serialize ob
                         wxString rj;
                         rj << _T("{\n");
                         rj << _T("  \"gem_format\": \"resare-diagnostic-v1\",\n");
-                        rj << _T("  \"scanner_version\": \"GEM +33C4-DIAG\",\n");
+                        rj << _T("  \"scanner_version\": \"GEM +33C5-DIAG\",\n");
                         rj << wxString::Format(
                             _T("  \"route_length_metres\": %.1f,\n"),
                             routeLength
@@ -2511,9 +2524,9 @@ _resare_output_replacement = r'''                    // +33C4-DIAG: serialize ob
 
                             wxLogMessage(
                                 resareOK
-                                    ? _T("GEMRESARE +33C4-DIAG WRITE OK "
+                                    ? _T("GEMRESARE +33C5-DIAG WRITE OK "
                                          "records=%lu path=%s")
-                                    : _T("GEMRESARE +33C4-DIAG WRITE FAILED "
+                                    : _T("GEMRESARE +33C5-DIAG WRITE FAILED "
                                          "records=%lu path=%s"),
                                 (unsigned long)gemResareDiag.size(),
                                 resarePath.c_str()
@@ -2521,7 +2534,7 @@ _resare_output_replacement = r'''                    // +33C4-DIAG: serialize ob
                         }
                         else {
                             wxLogMessage(
-                                _T("GEMRESARE +33C4-DIAG OPEN FAILED path=%s"),
+                                _T("GEMRESARE +33C5-DIAG OPEN FAILED path=%s"),
                                 resarePath.c_str()
                             );
                         }
@@ -2530,18 +2543,18 @@ _resare_output_replacement = r'''                    // +33C4-DIAG: serialize ob
                     // +13 presentation normalization.
                     // Preserve raw decoded S-57 strings and derive clean text/code'''
 if _resare_output_anchor not in chart:
-    raise RuntimeError("+33C4 output anchor not found after +33B assembly")
+    raise RuntimeError("+33C5 output anchor not found after +33B assembly")
 chart = chart.replace(_resare_output_anchor, _resare_output_replacement, 1)
 
 chart = chart.replace(
     "GEMBUILD +33B extended LIGHTS semantics active",
     "GEMBUILD +33B extended LIGHTS semantics active; "
-    "+33C4-DIAG RESARE observer active",
+    "+33C5-DIAG RESARE observer active",
     1
 )
 
 print(
-    "GEM +33C4-DIAG: +33B baseline retained; "
+    "GEM +33C5-DIAG: +33B baseline retained; "
     "RESARE observer -> gem-resare-diagnostic.json"
 )
 
