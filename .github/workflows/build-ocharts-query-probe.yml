@@ -28,8 +28,13 @@ jobs:
         run: |
           $lines = Get-Content "ocharts\src\eSENCChart.cpp"
 
-          Write-Host "=== Generated source lines 9580-9635 ==="
-          for ($i = 9579; $i -lt [Math]::Min(9635, $lines.Count); $i++) {
+          Write-Host "=== Generated source lines 7600-7660 ==="
+          for ($i = 7599; $i -lt 7660; $i++) {
+              "{0,6}: {1}" -f ($i + 1), $lines[$i]
+          }
+
+          Write-Host "=== Generated source lines 9530-9635 ==="
+          for ($i = 9529; $i -lt 9635; $i++) {
               "{0,6}: {1}" -f ($i + 1), $lines[$i]
           }
           
