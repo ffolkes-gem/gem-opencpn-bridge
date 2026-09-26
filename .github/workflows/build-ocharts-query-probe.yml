@@ -22,45 +22,21 @@ jobs:
       - name: Apply GEM selected-object probe
         shell: powershell
         run: python gem\tools\patch_ocharts.py
-        
-      - name: Diagnose generated eSENCChart.cpp
+
+      - name: Apply GEM selected-object probe
+        shell: powershell
+        run: python gem\tools\patch_ocharts.py
+
+      - name: Diagnose current route closing structure
         shell: powershell
         run: |
           $lines = Get-Content "ocharts\src\eSENCChart.cpp"
 
-          Write-Host "=== Generated source lines 7600-7660 ==="
-          for ($i = 7599; $i -lt 7660; $i++) {
+          Write-Host "=== Generated source lines 9580-9700 ==="
+          for ($i = 9579; $i -lt 9700; $i++) {
               "{0,6}: {1}" -f ($i + 1), $lines[$i]
           }
-
-          Write-Host "=== Generated source lines 9530-9635 ==="
-          for ($i = 9529; $i -lt 9635; $i++) {
-              "{0,6}: {1}" -f ($i + 1), $lines[$i]
-          }
-        
-      - name: Diagnose GEM brace depth
-        shell: powershell
-        run: |
-          $lines = Get-Content "ocharts\src\eSENCChart.cpp"
-          $depth = 0
-
-          for ($i = 7632; $i -lt 9619; $i++) {
-              $line = $lines[$i]
-
-              $opens  = ([regex]::Matches($line, '\{')).Count
-              $closes = ([regex]::Matches($line, '\}')).Count
-
-              $before = $depth
-              $depth += $opens - $closes
-
-              if (($opens -ne $closes) -or
-                  $line -match 'routeValid|routePointCount|33C-DIAG|RESARE') {
-                  "{0,6}: depth {1,3} -> {2,3} | {3}" -f `
-                      ($i + 1), $before, $depth, $line
-              }
-          }
-
-          Write-Host "=== Depth immediately before line 9618: $depth ==="       
+         
       - name: Install Gettext
         shell: powershell
         run: |
@@ -69,44 +45,7 @@ jobs:
           if (-not (Test-Path "$gettextBin\msgfmt.exe")) { throw "msgfmt.exe not found" }
           echo "$gettextBin" >> $env:GITHUB_PATH
           & "$gettextBin\msgfmt.exe" --version
-
-      - name: Diagnose route closing structure
-        shell: powershell
-        run: |
-          $lines = Get-Content "ocharts\src\eSENCChart.cpp"
-
-          Write-Host "=== Generated source lines 9588-9645 ==="
-          for ($i = 9587; $i -lt 9645; $i++) {
-              "{0,6}: {1}" -f ($i + 1), $lines[$i]
-          }
-
-          Write-Host "=== Generated source lines 9645-9705 ==="
-          for ($i = 9644; $i -lt 9705; $i++) {
-              "{0,6}: {1}" -f ($i + 1), $lines[$i]
-          }
-
-      - name: Diagnose normalization macro
-        shell: powershell
-        run: |
-          $lines = Get-Content "ocharts\src\eSENCChart.cpp"
-
-          Write-Host "=== Generated source lines 9115-9155 ==="
-          for ($i = 9114; $i -lt 9155; $i++) {
-              "{0,6}: [{1}]" -f ($i + 1), $lines[$i]
-          }
-
-      - name: Diagnose preprocessor directives
-        shell: powershell
-        run: |
-          $lines = Get-Content "ocharts\src\eSENCChart.cpp"
-
-          Write-Host "=== Preprocessor directives lines 8180-9620 ==="
-          for ($i = 8179; $i -lt 9620; $i++) {
-              if ($lines[$i] -match '^\s*#') {
-                  "{0,6}: {1}" -f ($i + 1), $lines[$i]
-              }
-          }
-          
+         
       - name: Build o-charts probe
         shell: cmd
         working-directory: ocharts
