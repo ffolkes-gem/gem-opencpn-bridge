@@ -506,6 +506,27 @@ chart = replace_once(
 
                     std::map<wxString, GEMRouteHit> routeHits;
 
+                    // +33C-DIAG: collect RESARE objects encountered by the
+                    // existing route sampling. This is diagnostic only and
+                    // does not alter +33B candidate acquisition/output.
+                    struct GEMResareDiag {
+                        int index;
+                        wxString objnam;
+                        wxString restrn;
+                        wxString catrea;
+                        wxString inform;
+                        wxString txtdsc;
+                        wxString status;
+                        wxString datsta;
+                        wxString datend;
+                        wxString sordat;
+                        wxString sorind;
+                        double firstSampleLat;
+                        double firstSampleLon;
+                        unsigned long hits;
+                    };
+                    std::map<wxString, GEMResareDiag> gemResareDiag;
+
                     struct GEMCandidate {
                         wxString primaryFeature;
                         int primaryIndex;
@@ -643,6 +664,42 @@ chart = replace_once(
                                             feature + wxString::Format(
                                                 _T(":%d"), ro->Index);
 
+                                        if( feature == _T("RESARE") ) {
+                                            GEMResareDiag d;
+                                            d.index = ro->Index;
+                                            d.firstSampleLat = sampleLat;
+                                            d.firstSampleLon = sampleLon;
+                                            d.hits = 1;
+
+                                            for( int rai = 0; rai < ro->n_attr; ++rai ) {
+                                                wxString an(ro->att_array + (rai * 6), wxConvUTF8, 6);
+                                                wxString av = GetObjectAttributeValueAsString(ro, rai, an);
+                                                an.Trim(true).Trim(false);
+                                                if( an == _T("OBJNAM") ) d.objnam = av;
+                                                else if( an == _T("RESTRN") ) d.restrn = av;
+                                                else if( an == _T("CATREA") ) d.catrea = av;
+                                                else if( an == _T("INFORM") ) d.inform = av;
+                                                else if( an == _T("TXTDSC") ) d.txtdsc = av;
+                                                else if( an == _T("STATUS") ) d.status = av;
+                                                else if( an == _T("DATSTA") ) d.datsta = av;
+                                                else if( an == _T("DATEND") ) d.datend = av;
+                                                else if( an == _T("SORDAT") ) d.sordat = av;
+                                                else if( an == _T("SORIND") ) d.sorind = av;
+                                            }
+
+                                            // Attribute-qualified key reduces collisions between
+                                            // chart-local indexes in overlapping cells.
+                                            wxString rk = wxString::Format(_T("%d|"), ro->Index) +
+                                                d.objnam + _T("|") + d.restrn + _T("|") +
+                                                d.catrea + _T("|") + d.inform + _T("|") + d.sorind;
+                                            std::map<wxString, GEMResareDiag>::iterator ri =
+                                                gemResareDiag.find(rk);
+                                            if( ri == gemResareDiag.end() )
+                                                gemResareDiag[rk] = d;
+                                            else
+                                                ri->second.hits++;
+                                        }
+
                                         std::map<wxString, GEMRouteHit>::iterator
                                             hitIt = routeHits.find(key);
 
@@ -680,6 +737,59 @@ chart = replace_once(
                                     delete routeObjects;
                                 }
                             }
+                        }
+                    }
+
+                    // +33C-DIAG: write route-intersected RESARE attributes to a
+                    // separate diagnostic file. No production candidate semantics are changed.
+                    {
+                        wxString resarePath = gemDir + wxFileName::GetPathSeparator() +
+                            _T("gem-resare-diagnostic.json");
+                        wxString rj;
+                        rj << _T("{\n")
+                           << _T("  \"gem_format\": \"resare-diagnostic-v1\",\n")
+                           << _T("  \"scanner_version\": \"GEM +33C-DIAG\",\n")
+                           << wxString::Format(_T("  \"route_length_metres\": %.1f,\n"), routeLength)
+                           << wxString::Format(_T("  \"route_sample_count\": %lu,\n"), routeSamples)
+                           << _T("  \"note\": \"RESARE objects returned at existing +33B route sample positions; diagnostic only\",\n")
+                           << _T("  \"restricted_areas\": [\n");
+
+                        size_t rn = 0;
+                        for( std::map<wxString, GEMResareDiag>::const_iterator it = gemResareDiag.begin();
+                             it != gemResareDiag.end(); ++it, ++rn ) {
+                            const GEMResareDiag &d = it->second;
+                            rj << _T("    {")
+                               << wxString::Format(_T("\"index\": %d, "), d.index)
+                               << _T("\"OBJNAM\": \"") << GEMJsonEscape(d.objnam) << _T("\", ")
+                               << _T("\"RESTRN\": \"") << GEMJsonEscape(d.restrn) << _T("\", ")
+                               << _T("\"CATREA\": \"") << GEMJsonEscape(d.catrea) << _T("\", ")
+                               << _T("\"INFORM\": \"") << GEMJsonEscape(d.inform) << _T("\", ")
+                               << _T("\"TXTDSC\": \"") << GEMJsonEscape(d.txtdsc) << _T("\", ")
+                               << _T("\"STATUS\": \"") << GEMJsonEscape(d.status) << _T("\", ")
+                               << _T("\"DATSTA\": \"") << GEMJsonEscape(d.datsta) << _T("\", ")
+                               << _T("\"DATEND\": \"") << GEMJsonEscape(d.datend) << _T("\", ")
+                               << _T("\"SORDAT\": \"") << GEMJsonEscape(d.sordat) << _T("\", ")
+                               << _T("\"SORIND\": \"") << GEMJsonEscape(d.sorind) << _T("\", ")
+                               << wxString::Format(_T("\"first_route_sample\": {\"latitude\": %.8f, \"longitude\": %.8f}, "),
+                                                  d.firstSampleLat, d.firstSampleLon)
+                               << wxString::Format(_T("\"sample_hits\": %lu"), d.hits)
+                               << _T("}");
+                            if( rn + 1 < gemResareDiag.size() ) rj << _T(",");
+                            rj << _T("\n");
+                        }
+                        rj << _T("  ],\n")
+                           << wxString::Format(_T("  \"restricted_area_count\": %lu\n"),
+                                              (unsigned long)gemResareDiag.size())
+                           << _T("}\n");
+
+                        wxFFile rf;
+                        if( rf.Open(resarePath, _T("wb")) ) {
+                            rf.Write(rj, wxConvUTF8);
+                            rf.Close();
+                            wxLogMessage(_T("GEMRESARE +33C-DIAG wrote %lu RESARE records to %s"),
+                                         (unsigned long)gemResareDiag.size(), resarePath.c_str());
+                        } else {
+                            wxLogMessage(_T("GEMRESARE +33C-DIAG could not open %s"), resarePath.c_str());
                         }
                     }
 
@@ -970,8 +1080,6 @@ chart = replace_once(
                                             candidate.lightNames.Add(lightName);
                                         }
                                     }
-
-                                }
 
                                 std::map<wxString, GEMRouteHit>::iterator hitIt =
                                     routeHits.find(key);
@@ -2319,6 +2427,8 @@ chart = chart.replace(
     'GEMBUILD +33A.1 overlap deduplication and chart provenance active',
     'GEMBUILD +33B extended LIGHTS semantics active'
 )
+chart = chart.replace("GEMBUILD +33B extended LIGHTS semantics active", "GEMBUILD +33B extended LIGHTS semantics active; +33C-DIAG RESARE diagnostic active")
+
 chart_path.write_text(chart, encoding="utf-8")
 
 print("Patched", chart_path)
@@ -2327,4 +2437,5 @@ print("GEM +29: point-object identity qualified by geographic position")
 print("GEM +11: +9 selected-object export retained")
 print("GEM +11: +10 corridor diagnostic retained")
 print("GEM +33B: +33A.1 acquisition/provenance retained; extended LIGHTS semantics active")
+print("GEM +33C-DIAG: separate RESARE diagnostic output -> gem-resare-diagnostic.json")
 print("GEM +18: normalized/raw navigation candidates -> gem-route-candidates-v2.json")
