@@ -94,6 +94,18 @@ jobs:
           for ($i = 9114; $i -lt 9155; $i++) {
               "{0,6}: [{1}]" -f ($i + 1), $lines[$i]
           }
+
+      - name: Diagnose preprocessor directives
+        shell: powershell
+        run: |
+          $lines = Get-Content "ocharts\src\eSENCChart.cpp"
+
+          Write-Host "=== Preprocessor directives lines 8180-9620 ==="
+          for ($i = 8179; $i -lt 9620; $i++) {
+              if ($lines[$i] -match '^\s*#') {
+                  "{0,6}: {1}" -f ($i + 1), $lines[$i]
+              }
+          }
           
       - name: Build o-charts probe
         shell: cmd
