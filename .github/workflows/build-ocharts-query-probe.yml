@@ -84,6 +84,16 @@ jobs:
           for ($i = 9644; $i -lt 9705; $i++) {
               "{0,6}: {1}" -f ($i + 1), $lines[$i]
           }
+
+      - name: Diagnose normalization macro
+        shell: powershell
+        run: |
+          $lines = Get-Content "ocharts\src\eSENCChart.cpp"
+
+          Write-Host "=== Generated source lines 9115-9155 ==="
+          for ($i = 9114; $i -lt 9155; $i++) {
+              "{0,6}: [{1}]" -f ($i + 1), $lines[$i]
+          }
           
       - name: Build o-charts probe
         shell: cmd
