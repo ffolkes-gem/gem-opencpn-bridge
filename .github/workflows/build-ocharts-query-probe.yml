@@ -70,6 +70,21 @@ jobs:
           echo "$gettextBin" >> $env:GITHUB_PATH
           & "$gettextBin\msgfmt.exe" --version
 
+      - name: Diagnose route closing structure
+        shell: powershell
+        run: |
+          $lines = Get-Content "ocharts\src\eSENCChart.cpp"
+
+          Write-Host "=== Generated source lines 9588-9645 ==="
+          for ($i = 9587; $i -lt 9645; $i++) {
+              "{0,6}: {1}" -f ($i + 1), $lines[$i]
+          }
+
+          Write-Host "=== Generated source lines 9645-9705 ==="
+          for ($i = 9644; $i -lt 9705; $i++) {
+              "{0,6}: {1}" -f ($i + 1), $lines[$i]
+          }
+          
       - name: Build o-charts probe
         shell: cmd
         working-directory: ocharts
