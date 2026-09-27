@@ -2412,11 +2412,13 @@ if( feature == _T("RESARE") ) {
         d.firstSampleLon = sampleLon;
         d.hits = 1;
         d.primitiveType = (int)ro->Primitive_type;
-        d.bboxValid = ro->BBObj.GetValid();
-        d.minLat = d.bboxValid ? ro->BBObj.GetMinLat() : 0.0;
-        d.minLon = d.bboxValid ? ro->BBObj.GetMinLon() : 0.0;
-        d.maxLat = d.bboxValid ? ro->BBObj.GetMaxLat() : 0.0;
-        d.maxLon = d.bboxValid ? ro->BBObj.GetMaxLon() : 0.0;
+        d.minLat = ro->lat_min;
+        d.minLon = ro->lon_min;
+        d.maxLat = ro->lat_max;
+        d.maxLon = ro->lon_max;
+        d.bboxValid = (d.minLat >= -90.0 && d.maxLat <= 90.0 &&
+                       d.minLon >= -360.0 && d.maxLon <= 360.0 &&
+                       d.minLat <= d.maxLat && d.minLon <= d.maxLon);
         d.refLat = ro->m_lat;
         d.refLon = ro->m_lon;
 
