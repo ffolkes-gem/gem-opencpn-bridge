@@ -1166,51 +1166,39 @@ chart = replace_once(
                         );
                     }
 
-                    // +33C8-GRAIN-RADIAL: diagnostic-only spatial reconstruction
-                    // of RESARE 2780 using the same live-chart query mechanism.
+                    // +33C9-GRAIN-GRID: diagnostic-only 3 NM x 3 NM footprint scan
+                    // of RESARE 2780. 50 m coarse sampling; +33B remains unchanged.
                     {
                         const double grainLat = 51.43226256;
                         const double grainLon = 0.70633820;
                         const double pi = 3.14159265358979323846;
-                        const double metresPerNm = 1852.0;
                         const double metresPerDegLat = 111320.0;
                         const double metresPerDegLon =
                             111320.0 * cos(grainLat * pi / 180.0);
-                        const double stepNm = 0.05;
-                        const double maxNm = 2.0;
+                        const double halfSpanM = 1.5 * 1852.0;
+                        const double stepM = 50.0;
+                        const int halfSteps = (int)(halfSpanM / stepM + 0.5);
 
-                        wxString grainJson;
-                        grainJson << _T("{\n");
-                        grainJson << _T("  \"gem_format\": \"grain-resare-radial-v1\",\n");
-                        grainJson << _T("  \"scanner_version\": \"GEM +33C8-GRAIN-RADIAL\",\n");
-                        grainJson << wxString::Format(
-                            _T("  \"target\": {\"feature\": \"RESARE\", \"index\": 2780, "
-                               "\"reference\": {\"latitude\": %.8f, \"longitude\": %.8f}},\n"),
-                            grainLat, grainLon
-                        );
-                        grainJson << wxString::Format(
-                            _T("  \"probe\": {\"bearing_step_degrees\": 10, "
-                               "\"radial_step_nm\": %.2f, \"maximum_radius_nm\": %.2f},\n"),
-                            stepNm, maxNm
-                        );
-                        grainJson << _T("  \"radials\": [\n");
+                        unsigned long queryCount = 0;
+                        unsigned long hitCount = 0;
+                        bool haveHitBounds = false;
+                        double minHitLat = 0.0, maxHitLat = 0.0;
+                        double minHitLon = 0.0, maxHitLon = 0.0;
 
-                        for( int bearing = 0; bearing < 360; bearing += 10 ) {
-                            bool lastHit = false;
-                            bool everHit = false;
-                            double lastHitNm = -1.0;
-                            double firstMissAfterHitNm = -1.0;
-                            double lastLat = grainLat;
-                            double lastLon = grainLon;
+                        wxString hitsJson;
+                        hitsJson << _T("  \"hits\": [\n");
+                        bool firstGridHit = true;
 
-                            for( int si = 0; si <= (int)(maxNm / stepNm + 0.5); ++si ) {
-                                const double radiusNm = si * stepNm;
-                                const double radiusM = radiusNm * metresPerNm;
-                                const double br = bearing * pi / 180.0;
+                        for( int northStep = -halfSteps;
+                             northStep <= halfSteps; ++northStep ) {
+                            for( int eastStep = -halfSteps;
+                                 eastStep <= halfSteps; ++eastStep ) {
+                                const double northM = northStep * stepM;
+                                const double eastM = eastStep * stepM;
                                 const double probeLat =
-                                    grainLat + (cos(br) * radiusM / metresPerDegLat);
+                                    grainLat + northM / metresPerDegLat;
                                 const double probeLon =
-                                    grainLon + (sin(br) * radiusM / metresPerDegLon);
+                                    grainLon + eastM / metresPerDegLon;
 
                                 PlugIn_ViewPort probeVP = g_gemQueryVP;
                                 const double dLat = probeLat - probeVP.clat;
@@ -1257,47 +1245,70 @@ chart = replace_once(
                                         delete probeObjects;
                                     }
                                 }
+                                queryCount++;
 
                                 if( hit ) {
-                                    everHit = true;
-                                    lastHit = true;
-                                    lastHitNm = radiusNm;
-                                    lastLat = probeLat;
-                                    lastLon = probeLon;
-                                }
-                                else if( everHit && lastHit ) {
-                                    firstMissAfterHitNm = radiusNm;
-                                    break;
+                                    hitCount++;
+                                    if( !haveHitBounds ) {
+                                        minHitLat = maxHitLat = probeLat;
+                                        minHitLon = maxHitLon = probeLon;
+                                        haveHitBounds = true;
+                                    }
+                                    else {
+                                        if( probeLat < minHitLat ) minHitLat = probeLat;
+                                        if( probeLat > maxHitLat ) maxHitLat = probeLat;
+                                        if( probeLon < minHitLon ) minHitLon = probeLon;
+                                        if( probeLon > maxHitLon ) maxHitLon = probeLon;
+                                    }
+
+                                    if( !firstGridHit ) hitsJson << _T(",\n");
+                                    firstGridHit = false;
+                                    hitsJson << wxString::Format(
+                                        _T("    {\"latitude\": %.8f, \"longitude\": %.8f, "
+                                           "\"north_m\": %.0f, \"east_m\": %.0f}"),
+                                        probeLat, probeLon, northM, eastM
+                                    );
                                 }
                             }
-
-                            grainJson << wxString::Format(
-                                _T("    {\"bearing_degrees\": %d, \"ever_hit\": %s, "
-                                   "\"last_hit_nm\": %.2f, \"first_miss_after_hit_nm\": %.2f, "
-                                   "\"last_hit\": {\"latitude\": %.8f, \"longitude\": %.8f}}"),
-                                bearing,
-                                everHit ? _T("true") : _T("false"),
-                                lastHitNm,
-                                firstMissAfterHitNm,
-                                lastLat,
-                                lastLon
-                            );
-                            if( bearing < 350 ) grainJson << _T(",");
-                            grainJson << _T("\n");
                         }
+                        hitsJson << _T("\n  ]\n");
 
-                        grainJson << _T("  ]\n}\n");
+                        wxString grainJson;
+                        grainJson << _T("{\n");
+                        grainJson << _T("  \"gem_format\": \"grain-resare-grid-v1\",\n");
+                        grainJson << _T("  \"scanner_version\": \"GEM +33C9-GRAIN-GRID\",\n");
+                        grainJson << wxString::Format(
+                            _T("  \"target\": {\"feature\": \"RESARE\", \"index\": 2780, "
+                               "\"reference\": {\"latitude\": %.8f, \"longitude\": %.8f}},\n"),
+                            grainLat, grainLon
+                        );
+                        grainJson << wxString::Format(
+                            _T("  \"probe\": {\"width_nm\": 3.0, \"height_nm\": 3.0, "
+                               "\"spacing_metres\": %.0f, \"query_count\": %lu, "
+                               "\"hit_count\": %lu},\n"),
+                            stepM, queryCount, hitCount
+                        );
+                        grainJson << wxString::Format(
+                            _T("  \"hit_bounds\": {\"valid\": %s, "
+                               "\"min_latitude\": %.8f, \"max_latitude\": %.8f, "
+                               "\"min_longitude\": %.8f, \"max_longitude\": %.8f},\n"),
+                            haveHitBounds ? _T("true") : _T("false"),
+                            minHitLat, maxHitLat, minHitLon, maxHitLon
+                        );
+                        grainJson << hitsJson;
+                        grainJson << _T("}\n");
 
                         wxString grainPath =
                             gemDir + wxFileName::GetPathSeparator() +
-                            _T("gem-grain-resare-radial.json");
+                            _T("gem-grain-resare-grid.json");
                         wxFFile grainFile;
                         if( grainFile.Open(grainPath, _T("wb")) ) {
                             grainFile.Write(grainJson, wxConvUTF8);
                             grainFile.Close();
                             wxLogMessage(
-                                _T("GEMGRAIN +33C8-GRAIN-RADIAL WRITE OK path=%s"),
-                                grainPath.c_str()
+                                _T("GEMGRAIN +33C9-GRAIN-GRID WRITE OK "
+                                   "queries=%lu hits=%lu path=%s"),
+                                queryCount, hitCount, grainPath.c_str()
                             );
                         }
                     }
@@ -2748,7 +2759,7 @@ chart = chart.replace(_resare_output_anchor, _resare_output_replacement, 1)
 chart = chart.replace(
     "GEMBUILD +33B extended LIGHTS semantics active",
     "GEMBUILD +33B extended LIGHTS semantics active; "
-    "+33C7-GEOMETRY-META RESARE geometry metadata active; +33C8-GRAIN-RADIAL active",
+    "+33C7-GEOMETRY-META RESARE geometry metadata active; +33C9-GRAIN-GRID active",
     1
 )
 
