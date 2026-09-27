@@ -1166,8 +1166,9 @@ chart = replace_once(
                         );
                     }
 
-                    // +33C9-GRAIN-GRID: diagnostic-only 3 NM x 3 NM footprint scan
-                    // of RESARE 2780. 50 m coarse sampling; +33B remains unchanged.
+                    // +33C10-GRAIN-ALL-RESARE: diagnostic-only 3 NM x 3 NM scan.
+                    // Record every RESARE index returned at each 50 m grid point,
+                    // plus per-index hit counts and bounds. +33B remains unchanged.
                     {
                         const double grainLat = 51.43226256;
                         const double grainLon = 0.70633820;
@@ -1179,12 +1180,17 @@ chart = replace_once(
                         const double stepM = 50.0;
                         const int halfSteps = (int)(halfSpanM / stepM + 0.5);
 
-                        unsigned long queryCount = 0;
-                        unsigned long hitCount = 0;
-                        bool haveHitBounds = false;
-                        double minHitLat = 0.0, maxHitLat = 0.0;
-                        double minHitLon = 0.0, maxHitLon = 0.0;
+                        struct GEMGridResareSummary {
+                            unsigned long hits;
+                            double minLat, maxLat, minLon, maxLon;
+                            GEMGridResareSummary() :
+                                hits(0), minLat(0.0), maxLat(0.0),
+                                minLon(0.0), maxLon(0.0) {}
+                        };
+                        std::map<int, GEMGridResareSummary> summaries;
 
+                        unsigned long queryCount = 0;
+                        unsigned long pointHitCount = 0;
                         wxString hitsJson;
                         hitsJson << _T("  \"hits\": [\n");
                         bool firstGridHit = true;
@@ -1210,10 +1216,9 @@ chart = replace_once(
                                 probeVP.lon_min += dLon;
                                 probeVP.lon_max += dLon;
 
-                                bool hit = false;
+                                std::set<int> pointIndexes;
                                 for( size_t gemCI = 0;
-                                     gemCI < g_gemLiveCharts.size() && !hit;
-                                     ++gemCI ) {
+                                     gemCI < g_gemLiveCharts.size(); ++gemCI ) {
                                     eSENCChart *gemChart = g_gemLiveCharts[gemCI];
                                     if( !gemChart ) continue;
                                     ExtentPI gemExtent;
@@ -1236,38 +1241,47 @@ chart = replace_once(
                                              pn; pn = pn->GetNext() ) {
                                             PI_S57Obj *po = pn->GetData();
                                             wxString pf(po->FeatureName, wxConvUTF8);
-                                            if( pf == _T("RESARE") &&
-                                                po->Index == 2780 ) {
-                                                hit = true;
-                                                break;
-                                            }
+                                            if( pf == _T("RESARE") )
+                                                pointIndexes.insert(po->Index);
                                         }
                                         delete probeObjects;
                                     }
                                 }
                                 queryCount++;
 
-                                if( hit ) {
-                                    hitCount++;
-                                    if( !haveHitBounds ) {
-                                        minHitLat = maxHitLat = probeLat;
-                                        minHitLon = maxHitLon = probeLon;
-                                        haveHitBounds = true;
-                                    }
-                                    else {
-                                        if( probeLat < minHitLat ) minHitLat = probeLat;
-                                        if( probeLat > maxHitLat ) maxHitLat = probeLat;
-                                        if( probeLon < minHitLon ) minHitLon = probeLon;
-                                        if( probeLon > maxHitLon ) maxHitLon = probeLon;
-                                    }
-
+                                if( !pointIndexes.empty() ) {
+                                    pointHitCount++;
                                     if( !firstGridHit ) hitsJson << _T(",\n");
                                     firstGridHit = false;
                                     hitsJson << wxString::Format(
                                         _T("    {\"latitude\": %.8f, \"longitude\": %.8f, "
-                                           "\"north_m\": %.0f, \"east_m\": %.0f}"),
+                                           "\"north_m\": %.0f, \"east_m\": %.0f, "
+                                           "\"resare_indexes\": ["),
                                         probeLat, probeLon, northM, eastM
                                     );
+
+                                    bool firstIndex = true;
+                                    for( std::set<int>::const_iterator it =
+                                             pointIndexes.begin();
+                                         it != pointIndexes.end(); ++it ) {
+                                        if( !firstIndex ) hitsJson << _T(", ");
+                                        firstIndex = false;
+                                        hitsJson << wxString::Format(_T("%d"), *it);
+
+                                        GEMGridResareSummary &s = summaries[*it];
+                                        if( s.hits == 0 ) {
+                                            s.minLat = s.maxLat = probeLat;
+                                            s.minLon = s.maxLon = probeLon;
+                                        }
+                                        else {
+                                            if( probeLat < s.minLat ) s.minLat = probeLat;
+                                            if( probeLat > s.maxLat ) s.maxLat = probeLat;
+                                            if( probeLon < s.minLon ) s.minLon = probeLon;
+                                            if( probeLon > s.maxLon ) s.maxLon = probeLon;
+                                        }
+                                        s.hits++;
+                                    }
+                                    hitsJson << _T("]}");
                                 }
                             }
                         }
@@ -1275,40 +1289,50 @@ chart = replace_once(
 
                         wxString grainJson;
                         grainJson << _T("{\n");
-                        grainJson << _T("  \"gem_format\": \"grain-resare-grid-v1\",\n");
-                        grainJson << _T("  \"scanner_version\": \"GEM +33C9-GRAIN-GRID\",\n");
+                        grainJson << _T("  \"gem_format\": \"grain-all-resare-grid-v1\",\n");
+                        grainJson << _T("  \"scanner_version\": \"GEM +33C10-GRAIN-ALL-RESARE\",\n");
                         grainJson << wxString::Format(
-                            _T("  \"target\": {\"feature\": \"RESARE\", \"index\": 2780, "
-                               "\"reference\": {\"latitude\": %.8f, \"longitude\": %.8f}},\n"),
+                            _T("  \"reference\": {\"latitude\": %.8f, \"longitude\": %.8f},\n"),
                             grainLat, grainLon
                         );
                         grainJson << wxString::Format(
                             _T("  \"probe\": {\"width_nm\": 3.0, \"height_nm\": 3.0, "
                                "\"spacing_metres\": %.0f, \"query_count\": %lu, "
-                               "\"hit_count\": %lu},\n"),
-                            stepM, queryCount, hitCount
+                               "\"points_with_resare\": %lu},\n"),
+                            stepM, queryCount, pointHitCount
                         );
-                        grainJson << wxString::Format(
-                            _T("  \"hit_bounds\": {\"valid\": %s, "
-                               "\"min_latitude\": %.8f, \"max_latitude\": %.8f, "
-                               "\"min_longitude\": %.8f, \"max_longitude\": %.8f},\n"),
-                            haveHitBounds ? _T("true") : _T("false"),
-                            minHitLat, maxHitLat, minHitLon, maxHitLon
-                        );
+                        grainJson << _T("  \"resare_summary\": [\n");
+                        bool firstSummary = true;
+                        for( std::map<int, GEMGridResareSummary>::const_iterator it =
+                                 summaries.begin(); it != summaries.end(); ++it ) {
+                            if( !firstSummary ) grainJson << _T(",\n");
+                            firstSummary = false;
+                            const GEMGridResareSummary &s = it->second;
+                            grainJson << wxString::Format(
+                                _T("    {\"index\": %d, \"grid_hits\": %lu, "
+                                   "\"bounds\": {\"min_latitude\": %.8f, "
+                                   "\"max_latitude\": %.8f, \"min_longitude\": %.8f, "
+                                   "\"max_longitude\": %.8f}}"),
+                                it->first, s.hits, s.minLat, s.maxLat,
+                                s.minLon, s.maxLon
+                            );
+                        }
+                        grainJson << _T("\n  ],\n");
                         grainJson << hitsJson;
                         grainJson << _T("}\n");
 
                         wxString grainPath =
                             gemDir + wxFileName::GetPathSeparator() +
-                            _T("gem-grain-resare-grid.json");
+                            _T("gem-grain-all-resare-grid.json");
                         wxFFile grainFile;
                         if( grainFile.Open(grainPath, _T("wb")) ) {
                             grainFile.Write(grainJson, wxConvUTF8);
                             grainFile.Close();
                             wxLogMessage(
-                                _T("GEMGRAIN +33C9-GRAIN-GRID WRITE OK "
-                                   "queries=%lu hits=%lu path=%s"),
-                                queryCount, hitCount, grainPath.c_str()
+                                _T("GEMGRAIN +33C10-GRAIN-ALL-RESARE WRITE OK "
+                                   "queries=%lu points=%lu indexes=%lu path=%s"),
+                                queryCount, pointHitCount,
+                                (unsigned long)summaries.size(), grainPath.c_str()
                             );
                         }
                     }
@@ -2759,7 +2783,7 @@ chart = chart.replace(_resare_output_anchor, _resare_output_replacement, 1)
 chart = chart.replace(
     "GEMBUILD +33B extended LIGHTS semantics active",
     "GEMBUILD +33B extended LIGHTS semantics active; "
-    "+33C7-GEOMETRY-META RESARE geometry metadata active; +33C9-GRAIN-GRID active",
+    "+33C7-GEOMETRY-META RESARE geometry metadata active; +33C10-GRAIN-ALL-RESARE active",
     1
 )
 
