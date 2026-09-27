@@ -1166,6 +1166,142 @@ chart = replace_once(
                         );
                     }
 
+                    // +33C8-GRAIN-RADIAL: diagnostic-only spatial reconstruction
+                    // of RESARE 2780 using the same live-chart query mechanism.
+                    {
+                        const double grainLat = 51.43226256;
+                        const double grainLon = 0.70633820;
+                        const double pi = 3.14159265358979323846;
+                        const double metresPerNm = 1852.0;
+                        const double metresPerDegLat = 111320.0;
+                        const double metresPerDegLon =
+                            111320.0 * cos(grainLat * pi / 180.0);
+                        const double stepNm = 0.05;
+                        const double maxNm = 2.0;
+
+                        wxString grainJson;
+                        grainJson << _T("{\n");
+                        grainJson << _T("  \"gem_format\": \"grain-resare-radial-v1\",\n");
+                        grainJson << _T("  \"scanner_version\": \"GEM +33C8-GRAIN-RADIAL\",\n");
+                        grainJson << wxString::Format(
+                            _T("  \"target\": {\"feature\": \"RESARE\", \"index\": 2780, "
+                               "\"reference\": {\"latitude\": %.8f, \"longitude\": %.8f}},\n"),
+                            grainLat, grainLon
+                        );
+                        grainJson << wxString::Format(
+                            _T("  \"probe\": {\"bearing_step_degrees\": 10, "
+                               "\"radial_step_nm\": %.2f, \"maximum_radius_nm\": %.2f},\n"),
+                            stepNm, maxNm
+                        );
+                        grainJson << _T("  \"radials\": [\n");
+
+                        for( int bearing = 0; bearing < 360; bearing += 10 ) {
+                            bool lastHit = false;
+                            bool everHit = false;
+                            double lastHitNm = -1.0;
+                            double firstMissAfterHitNm = -1.0;
+                            double lastLat = grainLat;
+                            double lastLon = grainLon;
+
+                            for( int si = 0; si <= (int)(maxNm / stepNm + 0.5); ++si ) {
+                                const double radiusNm = si * stepNm;
+                                const double radiusM = radiusNm * metresPerNm;
+                                const double br = bearing * pi / 180.0;
+                                const double probeLat =
+                                    grainLat + (cos(br) * radiusM / metresPerDegLat);
+                                const double probeLon =
+                                    grainLon + (sin(br) * radiusM / metresPerDegLon);
+
+                                PlugIn_ViewPort probeVP = g_gemQueryVP;
+                                const double dLat = probeLat - probeVP.clat;
+                                const double dLon = probeLon - probeVP.clon;
+                                probeVP.clat = probeLat;
+                                probeVP.clon = probeLon;
+                                probeVP.lat_min += dLat;
+                                probeVP.lat_max += dLat;
+                                probeVP.lon_min += dLon;
+                                probeVP.lon_max += dLon;
+
+                                bool hit = false;
+                                for( size_t gemCI = 0;
+                                     gemCI < g_gemLiveCharts.size() && !hit;
+                                     ++gemCI ) {
+                                    eSENCChart *gemChart = g_gemLiveCharts[gemCI];
+                                    if( !gemChart ) continue;
+                                    ExtentPI gemExtent;
+                                    if( !gemChart->GetChartExtent(&gemExtent) ) continue;
+                                    if( probeLat < gemExtent.SLAT ||
+                                        probeLat > gemExtent.NLAT ||
+                                        probeLon < gemExtent.WLON ||
+                                        probeLon > gemExtent.ELON ) continue;
+
+                                    ListOfPI_S57Obj *probeObjects =
+                                        gemChart->GetObjRuleListAtLatLon(
+                                            (float)probeLat,
+                                            (float)probeLon,
+                                            g_gemQueryRadius,
+                                            &probeVP
+                                        );
+                                    if( probeObjects ) {
+                                        for( ListOfPI_S57Obj::Node *pn =
+                                                 probeObjects->GetFirst();
+                                             pn; pn = pn->GetNext() ) {
+                                            PI_S57Obj *po = pn->GetData();
+                                            wxString pf(po->FeatureName, wxConvUTF8);
+                                            if( pf == _T("RESARE") &&
+                                                po->Index == 2780 ) {
+                                                hit = true;
+                                                break;
+                                            }
+                                        }
+                                        delete probeObjects;
+                                    }
+                                }
+
+                                if( hit ) {
+                                    everHit = true;
+                                    lastHit = true;
+                                    lastHitNm = radiusNm;
+                                    lastLat = probeLat;
+                                    lastLon = probeLon;
+                                }
+                                else if( everHit && lastHit ) {
+                                    firstMissAfterHitNm = radiusNm;
+                                    break;
+                                }
+                            }
+
+                            grainJson << wxString::Format(
+                                _T("    {\"bearing_degrees\": %d, \"ever_hit\": %s, "
+                                   "\"last_hit_nm\": %.2f, \"first_miss_after_hit_nm\": %.2f, "
+                                   "\"last_hit\": {\"latitude\": %.8f, \"longitude\": %.8f}}"),
+                                bearing,
+                                everHit ? _T("true") : _T("false"),
+                                lastHitNm,
+                                firstMissAfterHitNm,
+                                lastLat,
+                                lastLon
+                            );
+                            if( bearing < 350 ) grainJson << _T(",");
+                            grainJson << _T("\n");
+                        }
+
+                        grainJson << _T("  ]\n}\n");
+
+                        wxString grainPath =
+                            gemDir + wxFileName::GetPathSeparator() +
+                            _T("gem-grain-resare-radial.json");
+                        wxFFile grainFile;
+                        if( grainFile.Open(grainPath, _T("wb")) ) {
+                            grainFile.Write(grainJson, wxConvUTF8);
+                            grainFile.Close();
+                            wxLogMessage(
+                                _T("GEMGRAIN +33C8-GRAIN-RADIAL WRITE OK path=%s"),
+                                grainPath.c_str()
+                            );
+                        }
+                    }
+
                     // +13 presentation normalization.
                     // Preserve raw decoded S-57 strings and derive clean text/code
                     // separately.  Values without a trailing "(number)" remain text-only.
@@ -2612,7 +2748,7 @@ chart = chart.replace(_resare_output_anchor, _resare_output_replacement, 1)
 chart = chart.replace(
     "GEMBUILD +33B extended LIGHTS semantics active",
     "GEMBUILD +33B extended LIGHTS semantics active; "
-    "+33C7-GEOMETRY-META RESARE geometry metadata active",
+    "+33C7-GEOMETRY-META RESARE geometry metadata active; +33C8-GRAIN-RADIAL active",
     1
 )
 
