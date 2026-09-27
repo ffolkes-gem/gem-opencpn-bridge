@@ -2358,6 +2358,9 @@ _resare_struct_replacement = r'''                    std::map<wxString, GEMRoute
                         double firstSampleLon;
                         unsigned long hits;
                         int primitiveType;
+                        int pointCount;
+                        int lineSegmentCount;
+                        int maxEdgePoints;
                         bool bboxValid;
                         double minLat;
                         double minLon;
@@ -2412,6 +2415,9 @@ if( feature == _T("RESARE") ) {
         d.firstSampleLon = sampleLon;
         d.hits = 1;
         d.primitiveType = (int)ro->Primitive_type;
+        d.pointCount = ro->npt;
+        d.lineSegmentCount = ro->m_n_lsindex;
+        d.maxEdgePoints = ro->m_n_edge_max_points;
         d.minLat = ro->lat_min;
         d.minLon = ro->lon_min;
         d.maxLat = ro->lat_max;
@@ -2494,7 +2500,7 @@ _resare_output_replacement = r'''                    // +33C5-DIAG: serialize ob
                         wxString rj;
                         rj << _T("{\n");
                         rj << _T("  \"gem_format\": \"resare-diagnostic-v1\",\n");
-                        rj << _T("  \"scanner_version\": \"GEM +33C5-DIAG\",\n");
+                        rj << _T("  \"scanner_version\": \"GEM +33C7-GEOMETRY-META\",\n");
                         rj << wxString::Format(
                             _T("  \"route_length_metres\": %.1f,\n"),
                             routeLength
@@ -2542,6 +2548,8 @@ _resare_output_replacement = r'''                    // +33C5-DIAG: serialize ob
                             );
                             rj << wxString::Format(
                                 _T("\"geometry\": {\"primitive_type\": %d, "
+                                   "\"point_count\": %d, \"line_segment_count\": %d, "
+                                   "\"max_edge_points\": %d, "
                                    "\"bbox_valid\": %s, \"reference\": "
                                    "{\"latitude\": %.8f, \"longitude\": %.8f}, "
                                    "\"bbox\": {\"min_latitude\": %.8f, "
@@ -2549,6 +2557,9 @@ _resare_output_replacement = r'''                    // +33C5-DIAG: serialize ob
                                    "\"max_latitude\": %.8f, "
                                    "\"max_longitude\": %.8f}}"),
                                 d.primitiveType,
+                                d.pointCount,
+                                d.lineSegmentCount,
+                                d.maxEdgePoints,
                                 d.bboxValid ? _T("true") : _T("false"),
                                 d.refLat, d.refLon,
                                 d.minLat, d.minLon,
@@ -2601,12 +2612,12 @@ chart = chart.replace(_resare_output_anchor, _resare_output_replacement, 1)
 chart = chart.replace(
     "GEMBUILD +33B extended LIGHTS semantics active",
     "GEMBUILD +33B extended LIGHTS semantics active; "
-    "+33C6-GEOMETRY RESARE bbox diagnostic active",
+    "+33C7-GEOMETRY-META RESARE geometry metadata active",
     1
 )
 
 print(
-    "GEM +33C6-GEOMETRY: +33B baseline retained; "
+    "GEM +33C7-GEOMETRY-META: +33B baseline retained; "
     "RESARE observer -> gem-resare-diagnostic.json"
 )
 
