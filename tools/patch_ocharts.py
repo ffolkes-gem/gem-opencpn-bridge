@@ -27,6 +27,7 @@ chart = replace_once(
 #include <wx/stdpaths.h>
 #include <wx/filename.h>
 #include <map>
+#include <set>
 """,
     "includes"
 )
