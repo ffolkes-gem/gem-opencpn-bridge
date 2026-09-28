@@ -2793,6 +2793,149 @@ print(
     "RESARE observer -> gem-resare-diagnostic.json"
 )
 
+
+# +34: consolidated production passage-plan export.
+# Keep +33B navigation/light acquisition, fold route-observed RESARE records
+# into the same JSON, and remove the expensive Grain-only grid diagnostics.
+import re as _gem34_re
+
+# The Grain scan was useful research, but must never run in production.
+chart, _gem34_grain_count = _gem34_re.subn(
+    r'\n[ \t]*// \+33C10-GRAIN-ALL-RESARE: diagnostic-only 3 NM x 3 NM scan\..*?'
+    r'(?=\n[ \t]*// \+13 presentation normalization\.)',
+    '',
+    chart,
+    count=1,
+    flags=_gem34_re.S
+)
+if _gem34_grain_count != 1:
+    raise RuntimeError("+34 Grain diagnostic removal anchor not found")
+
+# The separate RESARE JSON is superseded by the consolidated candidate file.
+chart, _gem34_resare_file_count = _gem34_re.subn(
+    r'\n[ \t]*// \+33C5-DIAG: serialize observations from.*?'
+    r'(?=\n[ \t]*// \+13 presentation normalization\.)',
+    '',
+    chart,
+    count=1,
+    flags=_gem34_re.S
+)
+if _gem34_resare_file_count != 1:
+    raise RuntimeError("+34 separate RESARE output removal anchor not found")
+
+# Promote the normal candidate document to the single production package.
+chart = chart.replace(
+    '"gem_format": "route-navigation-candidates-v3"',
+    '"gem_format": "route-navigation-candidates-v4"',
+    1
+)
+chart = chart.replace(
+    '"scanner_version": "GEM +33B"',
+    '"scanner_version": "GEM +34-CONSOLIDATED"',
+    1
+)
+chart = chart.replace(
+    'gem-route-candidates-v3.json',
+    'gem-route-candidates-v4.json',
+    1
+)
+
+_gem34_tail_old = r'''                    candidatesJson << _T("\n  ],\n");
+                    candidatesJson << wxString::Format(
+                        _T("  \"candidate_count\": %lu\n"),
+                        (unsigned long)gemCandidates.size()
+                    );
+                    candidatesJson << _T("}\n");'''
+
+_gem34_tail_new = r'''                    candidatesJson << _T("\n  ],\n");
+                    candidatesJson << wxString::Format(
+                        _T("  \"candidate_count\": %lu,\n"),
+                        (unsigned long)gemCandidates.size()
+                    );
+
+                    // +34: route-observed S-57 restricted areas live in the
+                    // same production JSON as navigation candidates/lights.
+                    candidatesJson << _T("  \"restricted_areas\": [\n");
+                    bool gemFirstRestrictedArea = true;
+                    for(
+                        std::map<wxString, GEMResareDiag>::const_iterator rit =
+                            gemResareDiag.begin();
+                        rit != gemResareDiag.end();
+                        ++rit
+                    ) {
+                        const GEMResareDiag &d = rit->second;
+                        if( !gemFirstRestrictedArea )
+                            candidatesJson << _T(",\n");
+
+                        candidatesJson << _T("    {\n");
+                        candidatesJson << wxString::Format(
+                            _T("      \"index\": %d,\n"), d.index);
+                        candidatesJson << _T("      \"feature\": \"RESARE\",\n");
+                        candidatesJson << _T("      \"name\": \"")
+                                       << GEMJsonEscape(d.objnam)
+                                       << _T("\",\n");
+                        candidatesJson << _T("      \"restriction\": \"")
+                                       << GEMJsonEscape(d.restrn)
+                                       << _T("\",\n");
+                        candidatesJson << _T("      \"category\": \"")
+                                       << GEMJsonEscape(d.catrea)
+                                       << _T("\",\n");
+                        candidatesJson << _T("      \"information\": \"")
+                                       << GEMJsonEscape(d.inform)
+                                       << _T("\",\n");
+                        candidatesJson << _T("      \"text_description\": \"")
+                                       << GEMJsonEscape(d.txtdsc)
+                                       << _T("\",\n");
+                        candidatesJson << _T("      \"status\": \"")
+                                       << GEMJsonEscape(d.status)
+                                       << _T("\",\n");
+                        candidatesJson << _T("      \"dates\": {\"start\": \"")
+                                       << GEMJsonEscape(d.datsta)
+                                       << _T("\", \"end\": \"")
+                                       << GEMJsonEscape(d.datend)
+                                       << _T("\"},\n");
+                        candidatesJson << _T("      \"source\": {\"SORDAT\": \"")
+                                       << GEMJsonEscape(d.sordat)
+                                       << _T("\", \"SORIND\": \"")
+                                       << GEMJsonEscape(d.sorind)
+                                       << _T("\"},\n");
+                        candidatesJson << wxString::Format(
+                            _T("      \"reference_position\": {\"latitude\": %.8f, \"longitude\": %.8f},\n"),
+                            d.refLat, d.refLon);
+                        candidatesJson << wxString::Format(
+                            _T("      \"first_route_sample\": {\"latitude\": %.8f, \"longitude\": %.8f},\n"),
+                            d.firstSampleLat, d.firstSampleLon);
+                        candidatesJson << wxString::Format(
+                            _T("      \"corridor_hits\": %lu,\n"), d.hits);
+                        candidatesJson << _T("      \"geometry\": null,\n");
+                        candidatesJson << _T("      \"geometry_accuracy\": \"not_available\"\n");
+                        candidatesJson << _T("    }");
+                        gemFirstRestrictedArea = false;
+                    }
+                    candidatesJson << _T("\n  ],\n");
+                    candidatesJson << wxString::Format(
+                        _T("  \"restricted_area_count\": %lu\n"),
+                        (unsigned long)gemResareDiag.size()
+                    );
+                    candidatesJson << _T("}\n");'''
+
+if _gem34_tail_old not in chart:
+    raise RuntimeError("+34 candidate JSON tail anchor not found")
+chart = chart.replace(_gem34_tail_old, _gem34_tail_new, 1)
+
+# Make build/runtime identity clear without disturbing the proven +33B query logic.
+chart = chart.replace(
+    'GEMBUILD +33B extended LIGHTS semantics active; +33C7-GEOMETRY-META RESARE geometry metadata active; +33C10-GRAIN-ALL-RESARE active',
+    'GEMBUILD +34 consolidated candidates, sector LIGHTS and RESARE active',
+    1
+)
+chart = chart.replace("GEMCANDIDATES +33B", "GEMCANDIDATES +34")
+
+print("GEM +34: consolidated single JSON -> gem-route-candidates-v4.json")
+print("GEM +34: +33B sector LIGHTS retained; route-observed RESARE embedded")
+print("GEM +34: Grain brute-force grid and separate RESARE JSON disabled")
+
+
 chart_path.write_text(chart, encoding="utf-8")
 
 print("Patched", chart_path)
