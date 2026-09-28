@@ -2661,122 +2661,7 @@ chart = (
 
 _resare_output_anchor = r'''                    // +13 presentation normalization.
                     // Preserve raw decoded S-57 strings and derive clean text/code'''
-_resare_output_replacement = r'''                    // +33C5-DIAG: serialize observations from
-                    // existing first-pass route sampling. Separate output only.
-                    {
-                        wxString resarePath =
-                            gemDir +
-                            wxFileName::GetPathSeparator() +
-                            _T("gem-resare-diagnostic.json");
-
-                        wxString rj;
-                        rj << _T("{\n");
-                        rj << _T("  \"gem_format\": \"resare-diagnostic-v1\",\n");
-                        rj << _T("  \"scanner_version\": \"GEM +33C7-GEOMETRY-META\",\n");
-                        rj << wxString::Format(
-                            _T("  \"route_length_metres\": %.1f,\n"),
-                            routeLength
-                        );
-                        rj << wxString::Format(
-                            _T("  \"route_sample_count\": %lu,\n"),
-                            routeSamples
-                        );
-                        rj << _T(
-                            "  \"note\": \"RESARE objects returned at existing "
-                            "+33B route sample positions; diagnostic only\",\n"
-                        );
-                        rj << _T("  \"restricted_areas\": [\n");
-
-                        size_t resareNumber = 0;
-                        for(
-                            std::map<wxString, GEMResareDiag>::const_iterator resareIt =
-                                gemResareDiag.begin();
-                            resareIt != gemResareDiag.end();
-                            ++resareIt, ++resareNumber
-                        ) {
-                            const GEMResareDiag &d = resareIt->second;
-
-                            rj << _T("    {");
-                            rj << wxString::Format(_T("\"index\": %d, "), d.index);
-                            rj << _T("\"OBJNAM\": \"") << GEMJsonEscape(d.objnam) << _T("\", ");
-                            rj << _T("\"RESTRN\": \"") << GEMJsonEscape(d.restrn) << _T("\", ");
-                            rj << _T("\"CATREA\": \"") << GEMJsonEscape(d.catrea) << _T("\", ");
-                            rj << _T("\"INFORM\": \"") << GEMJsonEscape(d.inform) << _T("\", ");
-                            rj << _T("\"TXTDSC\": \"") << GEMJsonEscape(d.txtdsc) << _T("\", ");
-                            rj << _T("\"STATUS\": \"") << GEMJsonEscape(d.status) << _T("\", ");
-                            rj << _T("\"DATSTA\": \"") << GEMJsonEscape(d.datsta) << _T("\", ");
-                            rj << _T("\"DATEND\": \"") << GEMJsonEscape(d.datend) << _T("\", ");
-                            rj << _T("\"SORDAT\": \"") << GEMJsonEscape(d.sordat) << _T("\", ");
-                            rj << _T("\"SORIND\": \"") << GEMJsonEscape(d.sorind) << _T("\", ");
-                            rj << wxString::Format(
-                                _T("\"first_route_sample\": {\"latitude\": %.8f, "
-                                   "\"longitude\": %.8f}, "),
-                                d.firstSampleLat,
-                                d.firstSampleLon
-                            );
-                            rj << wxString::Format(
-                                _T("\"sample_hits\": %lu, "),
-                                d.hits
-                            );
-                            rj << wxString::Format(
-                                _T("\"geometry\": {\"primitive_type\": %d, "
-                                   "\"point_count\": %d, \"line_segment_count\": %d, "
-                                   "\"max_edge_points\": %d, "
-                                   "\"bbox_valid\": %s, \"reference\": "
-                                   "{\"latitude\": %.8f, \"longitude\": %.8f}, "
-                                   "\"bbox\": {\"min_latitude\": %.8f, "
-                                   "\"min_longitude\": %.8f, "
-                                   "\"max_latitude\": %.8f, "
-                                   "\"max_longitude\": %.8f}}"),
-                                d.primitiveType,
-                                d.pointCount,
-                                d.lineSegmentCount,
-                                d.maxEdgePoints,
-                                d.bboxValid ? _T("true") : _T("false"),
-                                d.refLat, d.refLon,
-                                d.minLat, d.minLon,
-                                d.maxLat, d.maxLon
-                            );
-                            rj << _T("}");
-
-                            if( resareNumber + 1 < gemResareDiag.size() )
-                                rj << _T(",");
-                            rj << _T("\n");
-                        }
-
-                        rj << _T("  ],\n");
-                        rj << wxString::Format(
-                            _T("  \"restricted_area_count\": %lu\n"),
-                            (unsigned long)gemResareDiag.size()
-                        );
-                        rj << _T("}\n");
-
-                        wxFFile resareFile;
-                        if( resareFile.Open(resarePath, _T("wb")) ) {
-                            bool resareOK =
-                                resareFile.Write(rj, wxConvUTF8);
-                            resareFile.Close();
-
-                            wxLogMessage(
-                                resareOK
-                                    ? _T("GEMRESARE +33C5-DIAG WRITE OK "
-                                         "records=%lu path=%s")
-                                    : _T("GEMRESARE +33C5-DIAG WRITE FAILED "
-                                         "records=%lu path=%s"),
-                                (unsigned long)gemResareDiag.size(),
-                                resarePath.c_str()
-                            );
-                        }
-                        else {
-                            wxLogMessage(
-                                _T("GEMRESARE +33C5-DIAG OPEN FAILED path=%s"),
-                                resarePath.c_str()
-                            );
-                        }
-                    }
-
-                    // +13 presentation normalization.
-                    // Preserve raw decoded S-57 strings and derive clean text/code'''
+_resare_output_replacement = _resare_output_anchor
 if _resare_output_anchor not in chart:
     raise RuntimeError("+33C5 output anchor not found after +33B assembly")
 chart = chart.replace(_resare_output_anchor, _resare_output_replacement, 1)
@@ -2790,7 +2675,7 @@ chart = chart.replace(
 
 print(
     "GEM +33C7-GEOMETRY-META: +33B baseline retained; "
-    "RESARE observer -> gem-resare-diagnostic.json"
+    "RESARE observer retained for +34 consolidated output"
 )
 
 
@@ -2810,27 +2695,6 @@ chart, _gem34_grain_count = _gem34_re.subn(
 )
 if _gem34_grain_count != 1:
     raise RuntimeError("+34 Grain diagnostic removal anchor not found")
-
-# The separate RESARE JSON is superseded by the consolidated candidate file.
-_gem34_resare_start = chart.find("wxString resarePath =")
-if _gem34_resare_start == -1:
-    raise RuntimeError("+34 separate RESARE output body not found")
-
-# Back up to the opening brace immediately before the diagnostic writer.
-_gem34_resare_start = chart.rfind("{", 0, _gem34_resare_start)
-if _gem34_resare_start == -1:
-    raise RuntimeError("+34 separate RESARE output opening brace not found")
-
-_gem34_resare_end = chart.find(
-    "// +13 presentation normalization.",
-    _gem34_resare_start
-)
-if _gem34_resare_end == -1:
-    raise RuntimeError("+34 separate RESARE output end not found")
-
-# Remove only the generated C++ writer block. Match on the stable implementation
-# token (resarePath), not its historical comment, which has varied across patches.
-chart = chart[:_gem34_resare_start] + chart[_gem34_resare_end:]
 
 # Promote the normal candidate document to the single production package.
 chart = chart.replace(
