@@ -2812,16 +2812,24 @@ if _gem34_grain_count != 1:
     raise RuntimeError("+34 Grain diagnostic removal anchor not found")
 
 # The separate RESARE JSON is superseded by the consolidated candidate file.
-chart, _gem34_resare_file_count = _gem34_re.subn(
-    r'\n[ \t]*// \+33C5-DIAG: serialize observations from.*?'
-    r'(?=\n[ \t]*// \+13 presentation normalization\.)',
-    '',
-    chart,
-    count=1,
-    flags=_gem34_re.S
+_gem34_resare_start = chart.find("// +33C5-DIAG: serialize observations from")
+if _gem34_resare_start == -1:
+    raise RuntimeError("+34 separate RESARE output start not found")
+
+_gem34_resare_end = chart.find(
+    "// +13 presentation normalization.",
+    _gem34_resare_start
 )
-if _gem34_resare_file_count != 1:
-    raise RuntimeError("+34 separate RESARE output removal anchor not found")
+if _gem34_resare_end == -1:
+    raise RuntimeError("+34 separate RESARE output end not found")
+
+# Remove only the generated C++ diagnostic block.  Use literal sentinels here
+# rather than a regex because the historical comments span multiple lines and
+# their indentation has changed across cumulative patch versions.
+chart = (
+    chart[:_gem34_resare_start] +
+    chart[_gem34_resare_end:]
+)
 
 # Promote the normal candidate document to the single production package.
 chart = chart.replace(
